@@ -16,7 +16,7 @@ config['ProcessingInfo'] = {'n_synthetic':'auto', # number of synthetic receiver
                             'starttime' : '', #optional, in the format HHMMSS if you only want to process some of the data
                             'stoptime': '', # optional, in the format HHMMSS, if you only want to process some of the data
                             'verbose': 'false', # diagnositic information during the run, troubleshooting only
-                            'cmn_filt': 'true'
+                            'cmn_filt': 'false' #this is a place holder for common mode filtering toggle, it does nothing. 
                             }
 config['FFTInfo'] = {'input_type':'time', #unit for fft parameter definition (time, point)
                      'n_fft':'0.5', #if time, Hz resoltuion of spectrogram, if points, n points to include, will add zero padding if necessary
