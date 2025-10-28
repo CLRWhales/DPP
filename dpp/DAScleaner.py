@@ -264,7 +264,7 @@ class DAS_cleaner:
             #find ship points within timeframe and range, plot points/lines, add in ship name on line in the plot?
             if self.AIS_data is not None:
                 #print('ships are showing')
-                mask = (self.AIS_data['timestamp'] > min(timestamps) - timedelta(minutes=1)) & (self.AIS_data['timestamp'] <= max(timestamps)+ timedelta(minutes=1))
+                mask = (self.AIS_data['timestamp'] > pd.Timestamp(min(timestamps)) - timedelta(minutes=1)) & (self.AIS_data['timestamp'] <= pd.Timestamp(max(timestamps))+ timedelta(minutes=1))
                 posdif = max(timestampsnum)- min(timestampsnum)
                 shiname_posy = posdif/2+min(timestampsnum)
                 ship_sub = self.AIS_data.loc[mask]
