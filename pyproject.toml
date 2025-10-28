@@ -33,5 +33,5 @@ ExampleInI = "dpp.config_test:main"
 [project.urls]
 Homepage = "https://github.com/CLRWhales/DPP"
 
-[tool.setuptools.packages.find]
-where = ["."]
+[tool.setuptools]
+packages = ["dpp"]
