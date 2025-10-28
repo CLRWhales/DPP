@@ -118,7 +118,6 @@ class DAS_cleaner:
             print(shipfile)
             self.AIS_data = pd.read_csv(shipfile[0], parse_dates=['timestamp'])
             self.unique_classes = self.AIS_data['name'].unique()
-            self.AIStimestamp = np.datetime64(self.AIS_data['timestamp'])
 
             
 
@@ -265,7 +264,7 @@ class DAS_cleaner:
             #find ship points within timeframe and range, plot points/lines, add in ship name on line in the plot?
             if self.AIS_data is not None:
                 #print('ships are showing')
-                mask = (self.AIStimestamp > min(timestamps) - timedelta(minutes=1)) & (self.AIStimestamp <= max(timestamps)+ timedelta(minutes=1))
+                mask = (self.AIS_data['timestamp'] > min(timestamps) - timedelta(minutes=1)) & (self.AIS_data['timestamp'] <= max(timestamps)+ timedelta(minutes=1))
                 posdif = max(timestampsnum)- min(timestampsnum)
                 shiname_posy = posdif/2+min(timestampsnum)
                 ship_sub = self.AIS_data.loc[mask]
