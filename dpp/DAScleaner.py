@@ -15,17 +15,17 @@ import pandas as pd
 
 matplotlib.use('agg')
 
-def read_csv_columns(file_path):
-        with open(file_path, newline='', encoding='utf-8') as csvfile:
-            reader = csv.reader(csvfile)
-            headers = next(reader)  # Read the header row
-            columns = {header: [] for header in headers}  # Initialize lists for each column
+# def read_csv_columns(file_path):
+#         with open(file_path, newline='', encoding='utf-8') as csvfile:
+#             reader = csv.reader(csvfile)
+#             headers = next(reader)  # Read the header row
+#             columns = {header: [] for header in headers}  # Initialize lists for each column
             
-            for row in reader:
-                for header, value in zip(headers, row):
-                    columns[header].append(value)
+#             for row in reader:
+#                 for header, value in zip(headers, row):
+#                     columns[header].append(value)
                     
-        return columns
+#         return columns
 
 class DAS_cleaner:
     def __init__(self, root):
@@ -137,15 +137,24 @@ class DAS_cleaner:
     
     def savetable(self):
         dnames = [os.path.basename(file) for file in self.file_paths]
-        rows = zip(dnames,self.whale_list,self.ship_list,self.earthquake_list,self.bad_list,self.red_list,self.seen)
+        #rows = zip(dnames,self.whale_list,self.ship_list,self.earthquake_list,self.bad_list,self.red_list,self.seen)
         fname = os.path.join(os.path.split(self.file_paths[1])[0] , 'id_flag.csv')
         print(fname)
-        with open(fname, 'w',encoding="ISO-8859-1") as f:
-            writer = csv.writer(f)
-            writer.writerow(['file_name','whale_flag','ship_flag','earthquake_flag','bad_flag','red_flag','seen_flag'])
-            for row in rows:
-                writer.writerow(row)
-         
+        # with open(fname, 'w',encoding="ISO-8859-1") as f:
+        #     writer = csv.writer(f)
+        #     writer.writerow(['file_name','whale_flag','ship_flag','earthquake_flag','bad_flag','red_flag','seen_flag'])
+        #     for row in rows:
+        #         writer.writerow(row)
+        df = pd.DataFrame({
+            'Filenames':dnames,
+            'whale_flag':self.whale_list,
+            'ship_flag':self.ship_list,
+            'earthquake_flag':self.earthquake_list,
+            'bad_flag':self.bad_list,
+            'red_flag':self.red_list
+        })
+        df.to_csv(fname)
+        
     def display_images(self):
         self.canvas.delete("all")
         self.current_images.clear()
@@ -263,7 +272,7 @@ class DAS_cleaner:
                 step = posdif/len(unique_classes)
 
                 for i,cls in enumerate(unique_classes):
-                    ax.plot(ship_sub[ship_sub['name'] == cls]['closest_prop_LYB']*260, ship_sub[ship_sub['name'] == cls]['timestamp'], color='white')
+                    ax.plot(ship_sub[ship_sub['name'] == cls]['along_track_m'], ship_sub[ship_sub['name'] == cls]['timestamp'], color='white')
                     shipname_posy = min(timestampsnum)+i*step
 
                     shipname_posx = ship_sub[ship_sub['name'] == cls]['closest_prop_LYB'].mean()*260

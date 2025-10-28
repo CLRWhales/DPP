@@ -111,11 +111,11 @@ def project_ais_positions(ais_df, line_utm, wgs84_to_utm, utm_to_wgs84,
       - cross_track_m: perpendicular distance (m, unsigned)
       - proj_lat/lon: coordinates of the projection point on the cable
     """
-    df = ais_df.copy()
+    #df = ais_df.copy()
 
     # Convert AIS positions to UTM
-    x, y = wgs84_to_utm.transform(df[lon_col].values, df[lat_col].values)
-    df["UTMX"], df["UTMY"] = x, y
+    x, y = wgs84_to_utm.transform(ais_df[lon_col].values, ais_df[lat_col].values)
+    ais_df["UTMX"], ais_df["UTMY"] = x, y
 
     total_len = line_utm.length
 
@@ -137,11 +137,18 @@ def project_ais_positions(ais_df, line_utm, wgs84_to_utm, utm_to_wgs84,
         proj_lats.append(proj_lat)
         proj_lons.append(proj_lon)
 
-    df["along_track_m"] = np.array(along_distances)
-    df["cross_track_m"] = np.array(cross_distances)
-    df["along_fraction"] = df["along_track_m"] / total_len
-    df["proj_lat"] = np.array(proj_lats)
-    df["proj_lon"] = np.array(proj_lons)
+
+    df = pd.DataFrame({
+        "timestamp":ais_df["datetimeUTC"],
+        "name":ais_df["name"],
+        "along_track_m":along_distances,
+        "cross_track_m":cross_distances
+    })
+    # df["along_track_m"] = np.array(along_distances)
+    # df["cross_track_m"] = np.array(cross_distances)
+    # df["along_fraction"] = df["along_track_m"] / total_len
+    # df["proj_lat"] = np.array(proj_lats)
+    # df["proj_lon"] = np.array(proj_lons)
 
     return df
 
