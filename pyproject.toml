@@ -5,7 +5,6 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "DPP"
 version = "0.1.0"
-packages=["dpp"]
 description = "A collection of helper functions and CLI tools to make preprocessing and cleaning with das easy and fun"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -34,3 +33,5 @@ ExampleInI = "dpp.config_test:main"
 [project.urls]
 Homepage = "https://github.com/CLRWhales/DPP"
 
+[tool.setuptools.packages.find]
+where = ["."]
