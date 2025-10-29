@@ -116,8 +116,10 @@ class DAS_cleaner:
         self.AIS_data = None
         if shipfile:
             print(shipfile)
-            self.AIS_data = pd.read_csv(shipfile[0], parse_dates=['timestamp'])
+            self.AIS_data = pd.read_csv(shipfile[0])
             self.unique_classes = self.AIS_data['name'].unique()
+            self.AIS_data['timestamp'] = pd.to_datetime(self.AIS_data['timestamp'], utc = True)
+            #print(self.AIS_data.head())
 
             
 
@@ -225,6 +227,9 @@ class DAS_cleaner:
                 timestamps.append([ts + timedelta(milliseconds = offset*1000) for offset in self.times])
             timestamps  = [x for xs in timestamps for x in xs]
             timestampsnum = mdates.date2num(timestamps)
+            timestamps = pd.to_datetime(timestamps, utc = False)
+            # print(timestamps)
+            # print(self.AIS_dates)
 
 
 
@@ -263,20 +268,52 @@ class DAS_cleaner:
         if self.showships:
             #find ship points within timeframe and range, plot points/lines, add in ship name on line in the plot?
             if self.AIS_data is not None:
-                #print('ships are showing')
-                mask = (self.AIS_data['timestamp'] > pd.Timestamp(min(timestamps)) - timedelta(minutes=1)) & (self.AIS_data['timestamp'] <= pd.Timestamp(max(timestamps))+ timedelta(minutes=1))
+                # print('ships are showing')
+                # print(self.AIS_data['timestamp'].dtype)
+                # print(min(timestamps).dtype)
+                # print(timedelta(minutes=1).dtype)
+                mask = (self.AIS_data['timestamp'] > min(timestamps) - timedelta(minutes=1)) & (self.AIS_data['timestamp']<= max(timestamps)+ timedelta(minutes=1))
                 posdif = max(timestampsnum)- min(timestampsnum)
                 shiname_posy = posdif/2+min(timestampsnum)
                 ship_sub = self.AIS_data.loc[mask]
                 unique_classes = ship_sub['name'].unique()
                 step = posdif/len(unique_classes)
 
-                for i,cls in enumerate(unique_classes):
-                    ax.plot(ship_sub[ship_sub['name'] == cls]['along_track_m'], ship_sub[ship_sub['name'] == cls]['timestamp'], color='white')
-                    shipname_posy = min(timestampsnum)+i*step
+                # for i,cls in enumerate(unique_classes):
+                #     ax.plot(ship_sub[ship_sub['name'] == cls]['along_track_m'], ship_sub[ship_sub['name'] == cls]['timestamp'], color='white')
+                #     shipname_posy = min(timestampsnum)+i*step
 
-                    shipname_posx = ship_sub[ship_sub['name'] == cls]['closest_prop_LYB'].mean()*260
-                    ax.text(shipname_posx,shipname_posy,cls,va='center', ha='center', fontsize=10, color='white', bbox=dict(facecolor='black', alpha=0.5))
+                #     shipname_posx = ship_sub[ship_sub['name'] == cls]['along_track_m'].iloc[0]/1000
+                #     ax.text(shipname_posx,shipname_posy,cls,va='center', ha='center', fontsize=10, color='white', bbox=dict(facecolor='black', alpha=0.5))
+                
+                for i, cls in enumerate(unique_classes):
+                    sub = ship_sub.loc[ship_sub['name'] == cls]
+
+                    # Skip if no data for this class
+                    if sub.empty:
+                        #print(f"⚠️ No data found for ship '{cls}'")
+                        continue
+
+                    # Plot ship track
+                    ax.plot(sub['along_track_m']/1000+4.5, sub['timestamp'], color='white')
+
+                    # Choose label Y-position
+                    shipname_posy = min(timestampsnum) + i * step
+
+                    # Choose label X-position — take the first valid point
+                    shipname_posx = sub['along_track_m'].iloc[0] / 1000.0 +4.5
+
+                    # Add text label
+                    ax.text(
+                        shipname_posx,
+                        shipname_posy,
+                        cls,
+                        va='center',
+                        ha='center',
+                        fontsize=10,
+                        color='white',
+                        bbox=dict(facecolor='black', alpha=0.5)
+                    )
 
 
 
