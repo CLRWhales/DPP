@@ -156,6 +156,25 @@ class DAS_cleaner:
             'red_flag':self.red_list
         })
         df.to_csv(fname,index=False)
+        prefix = df['Filenames'][0].split('_')[0]
+        fmt = prefix + '_' + '%Y%m%dT%H%M%S' + 'Z.npy'
+        datetimes = pd.to_datetime(df['Filenames'], format = fmt)
+        df_filtered = df.iloc[:,1:-1]
+        event_data = []
+        for col in df_filtered.columns:
+            times = datetimes[df_filtered[col] !=' '].tolist()
+            event_data.append(times)
+
+        # Create the event plot
+        plt.figure(figsize=(10, 5))
+        plt.eventplot(event_data, orientation='horizontal', linelengths=0.8)
+        plt.yticks(range(len(df_filtered.columns)), df_filtered.columns)
+        plt.xlabel('Timestamp')
+        plt.title('FlagID through time')
+        plt.grid(True)
+        plt.tight_layout()
+        plotpath = os.path.join(os.path.split(self.file_paths[1])[0] , 'id_flag.png')
+        plt.savefig(plotpath)
         
     def display_images(self):
         self.canvas.delete("all")
