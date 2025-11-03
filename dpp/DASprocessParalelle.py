@@ -144,7 +144,7 @@ def LPS_block(path_data,channels,verbose,config, fileIDs):
     data /= 1E-9 #scaling into units of strain is handled, this moves it to nano strain? 
 
     if config['ProcessingInfo'].getboolean('cmn_filt'):
-        data-=np.mean(data,axis = 1)[:,None]
+        data-=np.median(data,axis = 1)[:,None]
     #do stacking
     n_stack = int(config['ProcessingInfo']['n_stack'])
     chans = list_meta[0]['appended']['channels']
