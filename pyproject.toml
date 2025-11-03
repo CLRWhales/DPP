@@ -7,7 +7,7 @@ name = "DPP"
 version = "0.1.0"
 description = "A collection of helper functions and CLI tools to make preprocessing and cleaning with das easy and fun"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 license =  "GPL-3.0-or-later"
 authors = [
     { name = "Calder Robinson", email = "calder.robinson@ntnu.no" }
