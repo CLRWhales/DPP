@@ -247,7 +247,7 @@ class DAS_cleaner:
             timestamps  = [x for xs in timestamps for x in xs]
             timestampsnum = mdates.date2num(timestamps)
             timestamps = pd.to_datetime(timestamps, utc = False)
-            print(timestamps.dtype)
+            #print(timestamps.dtype)
             # print(self.AIS_dates)
 
 
@@ -287,7 +287,7 @@ class DAS_cleaner:
         if self.showships:
             #find ship points within timeframe and range, plot points/lines, add in ship name on line in the plot?
             if self.AIS_data is not None:
-                print('ships are showing')
+                #print('ships are showing')
                 # print(self.AIS_data['timestamp'].dtype)
                 # print(min(timestamps).dtype)
                 # print(timedelta(minutes=1).dtype)
@@ -304,7 +304,7 @@ class DAS_cleaner:
 
                 #     shipname_posx = ship_sub[ship_sub['name'] == cls]['along_track_m'].iloc[0]/1000
                 #     ax.text(shipname_posx,shipname_posy,cls,va='center', ha='center', fontsize=10, color='white', bbox=dict(facecolor='black', alpha=0.5))
-                print(unique_classes)
+                #print(unique_classes)
                 for i, cls in enumerate(unique_classes):
                     sub = ship_sub.loc[ship_sub['name'] == cls]
                     #print(sub.head())
@@ -315,7 +315,7 @@ class DAS_cleaner:
 
                     # Plot ship track
                     ax.plot(sub['along_track_m']/1000, sub['timestamp'], color='white')
-                    print(sub['along_track_m']/1000)
+                    #print(sub['along_track_m']/1000)
                     # Choose label Y-position
                     shipname_posy = min(timestampsnum) + i * step
 
