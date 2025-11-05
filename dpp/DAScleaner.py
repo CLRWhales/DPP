@@ -247,7 +247,7 @@ class DAS_cleaner:
             timestamps  = [x for xs in timestamps for x in xs]
             timestampsnum = mdates.date2num(timestamps)
             timestamps = pd.to_datetime(timestamps, utc = False)
-            # print(timestamps)
+            print(timestamps.dtype)
             # print(self.AIS_dates)
 
 
@@ -266,7 +266,7 @@ class DAS_cleaner:
         if highlight_region:
             h, w = highlight_region
             y_start = array.shape[0] - h  # Start position for highlighting
-            ax.add_patch(plt.Rectangle((0.25, max(timestampsnum)-(0.5/86400)),self.cmax/1000-0.5, -h*self.tdif/86400+(1/86400), edgecolor='red', linewidth=2, fill=False))
+            ax.add_patch(plt.Rectangle((self.cmin/1000+0.25, max(timestampsnum)-(0.5/86400)),self.cmax/1000- self.cmin/1000 - 0.5, -h*self.tdif/86400+(1/86400), edgecolor='red', linewidth=2, fill=False))
         
         
         if file_names:
@@ -277,7 +277,7 @@ class DAS_cleaner:
             #timestamps = ['']*(self.num_files_to_display+1)
             for i, file in enumerate(file_names):
                 #ax.text(-10, y_pos[i]-y_add, os.path.splitext(os.path.basename(file))[0][-16:-1], va='center', ha='right', fontsize=10, color='white', bbox=dict(facecolor='black', alpha=0.5))
-                ax.text(self.cmax/1000 + 5, starttime + (y_pos[i]-y_add)*self.tdif/86400 ,self.flag_showing[i] ,va='center', ha='left', fontsize=10, color='white', bbox=dict(facecolor='black', alpha=0.5))
+                ax.text(1.04*self.cmax/1000, starttime + (y_pos[i]-y_add)*self.tdif/86400 ,self.flag_showing[i] ,va='center', ha='left', fontsize=10, color='white', bbox=dict(facecolor='black', alpha=0.5))
                 #timestamps[i] = datetime.strftime(datetime.strptime(os.path.splitext(os.path.basename(file))[0][-16:-1], '%Y%m%dT%H%M%S'),'%Y-%m-%d, %H:%M:%S')
             
             #ax.set_yticks(ytick_coords,timestamps)
@@ -287,7 +287,7 @@ class DAS_cleaner:
         if self.showships:
             #find ship points within timeframe and range, plot points/lines, add in ship name on line in the plot?
             if self.AIS_data is not None:
-                # print('ships are showing')
+                print('ships are showing')
                 # print(self.AIS_data['timestamp'].dtype)
                 # print(min(timestamps).dtype)
                 # print(timedelta(minutes=1).dtype)
@@ -304,23 +304,23 @@ class DAS_cleaner:
 
                 #     shipname_posx = ship_sub[ship_sub['name'] == cls]['along_track_m'].iloc[0]/1000
                 #     ax.text(shipname_posx,shipname_posy,cls,va='center', ha='center', fontsize=10, color='white', bbox=dict(facecolor='black', alpha=0.5))
-                
+                print(unique_classes)
                 for i, cls in enumerate(unique_classes):
                     sub = ship_sub.loc[ship_sub['name'] == cls]
-
+                    #print(sub.head())
                     # Skip if no data for this class
                     if sub.empty:
                         #print(f"⚠️ No data found for ship '{cls}'")
                         continue
 
                     # Plot ship track
-                    ax.plot(sub['along_track_m']/1000+4.5, sub['timestamp'], color='white')
-
+                    ax.plot(sub['along_track_m']/1000, sub['timestamp'], color='white')
+                    print(sub['along_track_m']/1000)
                     # Choose label Y-position
                     shipname_posy = min(timestampsnum) + i * step
 
                     # Choose label X-position — take the first valid point
-                    shipname_posx = sub['along_track_m'].iloc[0] / 1000.0 +4.5
+                    shipname_posx = sub['along_track_m'].iloc[0] / 1000.0
 
                     # Add text label
                     ax.text(
