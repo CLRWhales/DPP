@@ -12,6 +12,7 @@ import glob
 from collections import deque
 from datetime import datetime, timedelta
 import pandas as pd
+from matplotlib.colors import Normalize
 
 matplotlib.use('agg')
 
@@ -48,10 +49,12 @@ class DAS_cleaner:
         
         self.second_button = tk.Button(self.button_frame, text="Save Flags", command=self.savetable)
         self.second_button.pack(side=tk.LEFT, padx=5, pady=10)
-        self.load_button.pack(pady=10)
 
         self.shipbutton = tk.Button(self.button_frame, text = 'Toggle Ships', command = self.toggleships)
         self.shipbutton.pack(side=tk.LEFT, padx=5, pady=10)
+
+        self.HDRbutton = tk.Button(self.button_frame,text = 'Toggle HDR', command= self.toggleHDR)
+        self.HDRbutton.pack(side = tk.LEFT,padx=5,pady=10)
 
         # self.flipbutton = tk.Button(self.button_frame, text = 'flip Ships', command = self.flipships)
         # self.flipbutton.pack(side=tk.LEFT, padx=5, pady=10)
@@ -60,7 +63,7 @@ class DAS_cleaner:
         self.num_files_to_display = 5  # Default number of images to display
         self.file_paths = []
         self.current_images = []
-
+        self.showHDR = False
         
         #keybindings
         self.root.bind("<Down>", self.next_image)
@@ -120,6 +123,8 @@ class DAS_cleaner:
             self.unique_classes = self.AIS_data['name'].unique()
             self.AIS_data['timestamp'] = pd.to_datetime(self.AIS_data['timestamp'], utc = True)
             #print(self.AIS_data.head())
+            self.AIS_data = self.AIS_data[self.AIS_data['along_track_m'] <= self.cmax] #gets rid of ships beyond the end of the fiber
+
 
             
 
@@ -225,7 +230,17 @@ class DAS_cleaner:
         norm_array /=a_std[None,:]
         norm_array = (norm_array - np.min(norm_array)) / (np.max(norm_array) - np.min(norm_array))  # Normalize to 0-1
         colormap = plt.get_cmap('magma')
-        color_mapped_array = (colormap(norm_array)[:, :, :3] * 255).astype(np.uint8)  # Apply Turbo colormap
+        if self.showHDR:
+            vmin = np.percentile(norm_array,25)
+            vmax = np.percentile(norm_array,99)
+            norm = Normalize(vmin,vmax)
+        else:
+            vmin = np.min(norm_array)
+            vmax = np.max(norm_array)
+            norm = Normalize(vmin,vmax)
+
+        color_mapped_array = (colormap(norm(norm_array))[:, :, :3] * 255).astype(np.uint8)  # Apply Turbo colormap
+        colormin,colormax =np.percentile(color_mapped_array,[25,99])
         tmp = self.root.geometry()
         vals = re.split(r'\D+',tmp)[0:2]
         xs = int(vals[0])
@@ -234,7 +249,7 @@ class DAS_cleaner:
         ytick_labs = np.arange(self.num_files_to_display+1)
         ytick_coords = ytick_labs * self.ltimes
         
-        xstep = 10 #km
+        xstep = 10 #kmc
         xtick_labs = np.arange(start = self.cmin/1000, stop = self.cmax/1000, step = xstep)
         xtick_coords = np.arange(start = 0, stop = self.lchannel, step = xstep/(((self.cmax-self.cmin)/1000)/self.lchannel))
 
@@ -247,7 +262,7 @@ class DAS_cleaner:
             timestamps  = [x for xs in timestamps for x in xs]
             timestampsnum = mdates.date2num(timestamps)
             timestamps = pd.to_datetime(timestamps, utc = False)
-            # print(timestamps)
+            #print(timestamps.dtype)
             # print(self.AIS_dates)
 
 
@@ -255,8 +270,6 @@ class DAS_cleaner:
     
         fig, ax = plt.subplots(figsize=(xs/100, ys/100))  # Adjust figure size
         ax.imshow(color_mapped_array,aspect = 'auto' ,origin = 'upper', extent=[self.cmin/1000, self.cmax/1000,max(timestampsnum),min(timestampsnum)])
-        #ax.set_yticks(ytick_coords,ytick_labs)
-        #ax.set_xticks(xtick_coords,xtick_labs)
         ax.axis('on')
         date_format = mdates.DateFormatter('%Y-%m-%d %H:%M:%S')
         ax.yaxis.set_major_formatter(date_format)
@@ -266,7 +279,7 @@ class DAS_cleaner:
         if highlight_region:
             h, w = highlight_region
             y_start = array.shape[0] - h  # Start position for highlighting
-            ax.add_patch(plt.Rectangle((0.25, max(timestampsnum)-(0.5/86400)),self.cmax/1000-0.5, -h*self.tdif/86400+(1/86400), edgecolor='red', linewidth=2, fill=False))
+            ax.add_patch(plt.Rectangle((self.cmin/1000+0.25, max(timestampsnum)-(0.5/86400)),self.cmax/1000- self.cmin/1000 - 0.5, -h*self.tdif/86400+(1/86400), edgecolor='red', linewidth=2, fill=False))
         
         
         if file_names:
@@ -277,7 +290,7 @@ class DAS_cleaner:
             #timestamps = ['']*(self.num_files_to_display+1)
             for i, file in enumerate(file_names):
                 #ax.text(-10, y_pos[i]-y_add, os.path.splitext(os.path.basename(file))[0][-16:-1], va='center', ha='right', fontsize=10, color='white', bbox=dict(facecolor='black', alpha=0.5))
-                ax.text(self.cmax/1000 + 5, starttime + (y_pos[i]-y_add)*self.tdif/86400 ,self.flag_showing[i] ,va='center', ha='left', fontsize=10, color='white', bbox=dict(facecolor='black', alpha=0.5))
+                ax.text(1.04*self.cmax/1000, starttime + (y_pos[i]-y_add)*self.tdif/86400 ,self.flag_showing[i] ,va='center', ha='left', fontsize=10, color='white', bbox=dict(facecolor='black', alpha=0.5))
                 #timestamps[i] = datetime.strftime(datetime.strptime(os.path.splitext(os.path.basename(file))[0][-16:-1], '%Y%m%dT%H%M%S'),'%Y-%m-%d, %H:%M:%S')
             
             #ax.set_yticks(ytick_coords,timestamps)
@@ -287,52 +300,47 @@ class DAS_cleaner:
         if self.showships:
             #find ship points within timeframe and range, plot points/lines, add in ship name on line in the plot?
             if self.AIS_data is not None:
-                # print('ships are showing')
+                #print('ships are showing')
                 # print(self.AIS_data['timestamp'].dtype)
                 # print(min(timestamps).dtype)
                 # print(timedelta(minutes=1).dtype)
                 mask = (self.AIS_data['timestamp'] > min(timestamps) - timedelta(minutes=30)) & (self.AIS_data['timestamp']<= max(timestamps)+ timedelta(minutes=30))
                 posdif = max(timestampsnum)- min(timestampsnum)
-                shiname_posy = posdif/2+min(timestampsnum)
+                #shiname_posy = posdif/2+min(timestampsnum)
                 ship_sub = self.AIS_data.loc[mask]
                 unique_classes = ship_sub['name'].unique()
-                step = posdif/len(unique_classes)
+                if unique_classes.size > 0:
+                    step = posdif/len(unique_classes)
 
-                # for i,cls in enumerate(unique_classes):
-                #     ax.plot(ship_sub[ship_sub['name'] == cls]['along_track_m'], ship_sub[ship_sub['name'] == cls]['timestamp'], color='white')
-                #     shipname_posy = min(timestampsnum)+i*step
+                    for i, cls in enumerate(unique_classes):
+                        sub = ship_sub.loc[ship_sub['name'] == cls]
+                        #print(sub.head())
+                        # Skip if no data for this class
+                        if sub.empty:
+                            #print(f" No data found for ship '{cls}'")
+                            continue
 
-                #     shipname_posx = ship_sub[ship_sub['name'] == cls]['along_track_m'].iloc[0]/1000
-                #     ax.text(shipname_posx,shipname_posy,cls,va='center', ha='center', fontsize=10, color='white', bbox=dict(facecolor='black', alpha=0.5))
-                
-                for i, cls in enumerate(unique_classes):
-                    sub = ship_sub.loc[ship_sub['name'] == cls]
+                        # Plot ship track
+                        ax.plot(sub['along_track_m']/1000, sub['timestamp'], color='white')
+                        #print(sub['along_track_m']/1000)
+                        # Choose label Y-position
+                        shipname_posy = min(timestampsnum) + i * step
+                        shipdist = np.round(np.mean(sub['cross_track_m'])/1000,decimals=2)
+                        dispname = cls + ', ' + str(shipdist)
+                        # Choose label X-position — take the first valid point
+                        shipname_posx = sub['along_track_m'].iloc[0] / 1000.0
 
-                    # Skip if no data for this class
-                    if sub.empty:
-                        #print(f"⚠️ No data found for ship '{cls}'")
-                        continue
-
-                    # Plot ship track
-                    ax.plot(sub['along_track_m']/1000+4.5, sub['timestamp'], color='white')
-
-                    # Choose label Y-position
-                    shipname_posy = min(timestampsnum) + i * step
-
-                    # Choose label X-position — take the first valid point
-                    shipname_posx = sub['along_track_m'].iloc[0] / 1000.0 +4.5
-
-                    # Add text label
-                    ax.text(
-                        shipname_posx,
-                        shipname_posy,
-                        cls,
-                        va='center',
-                        ha='center',
-                        fontsize=10,
-                        color='white',
-                        bbox=dict(facecolor='black', alpha=0.5)
-                    )
+                        # Add text label
+                        ax.text(
+                            shipname_posx,
+                            shipname_posy,
+                            dispname,
+                            va='center',
+                            ha='center',
+                            fontsize=10,
+                            color='white',
+                            bbox=dict(facecolor='black', alpha=0.5)
+                        )
 
 
 
@@ -404,6 +412,13 @@ class DAS_cleaner:
             self.showships = True
         self.display_images()
 
+    def toggleHDR(self,event = None):
+        self.direction = 'flag'
+        if self.showHDR == True:
+            self.showHDR = False
+        else:
+            self.showHDR = True
+        self.display_images()
     # def flipships(self, event = None):
     #     self.direction = 'flag'
     
