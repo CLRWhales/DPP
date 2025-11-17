@@ -291,7 +291,7 @@ class DAS_cleaner:
                 # print(self.AIS_data['timestamp'].dtype)
                 # print(min(timestamps).dtype)
                 # print(timedelta(minutes=1).dtype)
-                mask = (self.AIS_data['timestamp'] > min(timestamps) - timedelta(minutes=1)) & (self.AIS_data['timestamp']<= max(timestamps)+ timedelta(minutes=1))
+                mask = (self.AIS_data['timestamp'] > min(timestamps) - timedelta(minutes=30)) & (self.AIS_data['timestamp']<= max(timestamps)+ timedelta(minutes=30))
                 posdif = max(timestampsnum)- min(timestampsnum)
                 shiname_posy = posdif/2+min(timestampsnum)
                 ship_sub = self.AIS_data.loc[mask]
