@@ -124,6 +124,10 @@ class DAS_cleaner:
             self.AIS_data['timestamp'] = pd.to_datetime(self.AIS_data['timestamp'], utc = True)
             #print(self.AIS_data.head())
             self.AIS_data = self.AIS_data[self.AIS_data['along_track_m'] <= self.cmax] #gets rid of ships beyond the end of the fiber
+            if len(self.AIS_data.index)==0:
+                print('No ship CPA within fiber extent')
+        else:
+            print('Did not detect an AIS file')
 
 
             
@@ -240,7 +244,6 @@ class DAS_cleaner:
             norm = Normalize(vmin,vmax)
 
         color_mapped_array = (colormap(norm(norm_array))[:, :, :3] * 255).astype(np.uint8)  # Apply Turbo colormap
-        colormin,colormax =np.percentile(color_mapped_array,[25,99])
         tmp = self.root.geometry()
         vals = re.split(r'\D+',tmp)[0:2]
         xs = int(vals[0])
@@ -319,16 +322,20 @@ class DAS_cleaner:
                         if sub.empty:
                             #print(f" No data found for ship '{cls}'")
                             continue
-
+                        color = 'red' if 'KV' in cls else 'white'
                         # Plot ship track
-                        ax.plot(sub['along_track_m']/1000, sub['timestamp'], color='white')
+                        ax.plot(sub['along_track_m']/1000, sub['timestamp'], color='white', linewidth = 3)
+                        ax.plot(sub['along_track_m']/1000, sub['timestamp'], color=color)
                         #print(sub['along_track_m']/1000)
                         # Choose label Y-position
                         shipname_posy = min(timestampsnum) + i * step
                         shipdist = np.round(np.mean(sub['cross_track_m'])/1000,decimals=2)
                         dispname = cls + ', ' + str(shipdist)
                         # Choose label X-position — take the first valid point
-                        shipname_posx = sub['along_track_m'].iloc[0] / 1000.0
+                        #shipname_posx = sub['along_track_m'].iloc[0] / 1000.0
+                        shipname_posx = np.mean(sub['along_track_m']) / 1000.0
+
+                        
 
                         # Add text label
                         ax.text(
@@ -338,7 +345,7 @@ class DAS_cleaner:
                             va='center',
                             ha='center',
                             fontsize=10,
-                            color='white',
+                            color=color,
                             bbox=dict(facecolor='black', alpha=0.5)
                         )
 
