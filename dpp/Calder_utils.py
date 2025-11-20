@@ -3,7 +3,7 @@
 import numpy as np
 from concurrent.futures import ThreadPoolExecutor
 import glob
-import dpp.h5pydict as h5pydict
+import h5pydict as h5pydict
 import os
 from numpy.lib.stride_tricks import as_strided
 import scipy.ndimage as NDI
