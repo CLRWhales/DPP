@@ -424,9 +424,6 @@ def main():
     config['Append'] = {'first':fileIDs[0],
                         'outputdir':outputdir}
 
-
-
-
     if verbose:
         print(path_data)
         print(outputdir)

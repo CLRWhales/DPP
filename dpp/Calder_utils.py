@@ -391,8 +391,8 @@ def sliding_window_FK(arr, window_shape,overlap = 2, rescale = False, fold = Tru
             vels.append(np.round(slope[peak_lock]))
 
         intermediate = 20*np.log10(intermediate)
-        mintermediate = np.mean(intermediate, axis = 0)
-        results.extend((intermediate))#-mintermediate))
+        mintermediate = np.mean(intermediate)
+        results.extend((intermediate-mintermediate))
 
     if rescale:
         vals = np.stack(results,axis=0)[:,128:,:]

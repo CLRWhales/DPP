@@ -39,7 +39,10 @@ config['FKInfo'] = {'nfft_time':'1024', #parameters in units of samples for the 
                     'nfft_space':'2056', #how many channel to include, both should be a power of 2 for speed (applied after any stacking)
                     'rescale':'true',
                     'overlap':'2',
-                    'fold':'true'
+                    'fold':'true',
+                    'vmin':'1450',
+                    'vmax':'3500',
+                    'samplemethod':'none'
                     }
 
 def main():
