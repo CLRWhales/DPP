@@ -16,18 +16,6 @@ from matplotlib.colors import Normalize
 
 matplotlib.use('agg')
 
-# def read_csv_columns(file_path):
-#         with open(file_path, newline='', encoding='utf-8') as csvfile:
-#             reader = csv.reader(csvfile)
-#             headers = next(reader)  # Read the header row
-#             columns = {header: [] for header in headers}  # Initialize lists for each column
-            
-#             for row in reader:
-#                 for header, value in zip(headers, row):
-#                     columns[header].append(value)
-                    
-#         return columns
-
 class DAS_cleaner:
     def __init__(self, root):
         self.root = root
@@ -73,6 +61,7 @@ class DAS_cleaner:
         self.root.bind("<e>", self.add_earthquake)
         self.root.bind("<b>", self.add_bad)
         self.root.bind("<r>", self.add_red)
+        self.root.bind("<i>",self.add_ice)
 
         
     def load_directory(self):
@@ -92,6 +81,7 @@ class DAS_cleaner:
         self.earthquake_list = [' '] * len(self.file_paths)
         self.bad_list = [' '] * len(self.file_paths)
         self.red_list = [' '] * len(self.file_paths)
+        self.ice_list = [' '] *len(self.file_paths)
 
         self.showships = False
 
@@ -151,16 +141,13 @@ class DAS_cleaner:
         #rows = zip(dnames,self.whale_list,self.ship_list,self.earthquake_list,self.bad_list,self.red_list,self.seen)
         fname = os.path.join(os.path.split(self.file_paths[1])[0] , 'id_flag.csv')
         print(fname)
-        # with open(fname, 'w',encoding="ISO-8859-1") as f:
-        #     writer = csv.writer(f)
-        #     writer.writerow(['file_name','whale_flag','ship_flag','earthquake_flag','bad_flag','red_flag','seen_flag'])
-        #     for row in rows:
-        #         writer.writerow(row)
+
         df = pd.DataFrame({
             'Filenames':dnames,
             'whale_flag':self.whale_list,
             'ship_flag':self.ship_list,
             'earthquake_flag':self.earthquake_list,
+            'ice_flag':self.ice_list,
             'bad_flag':self.bad_list,
             'red_flag':self.red_list
         })
@@ -168,7 +155,7 @@ class DAS_cleaner:
         prefix = df['Filenames'][0].split('_')[0]
         fmt = prefix + '_' + '%Y%m%dT%H%M%S' + 'Z.npy'
         datetimes = pd.to_datetime(df['Filenames'], format = fmt)
-        df_filtered = df.iloc[:,1:-1]
+        df_filtered = df.iloc[:,1:]
         event_data = []
         for col in df_filtered.columns:
             times = datetimes[df_filtered[col] !=' '].tolist()
@@ -190,7 +177,7 @@ class DAS_cleaner:
         self.current_images.clear()
         self.current_images = []
 
-        flag_list = list(zip(self.whale_list,self.ship_list,self.earthquake_list,self.bad_list,self.red_list))
+        flag_list = list(zip(self.whale_list,self.ship_list,self.earthquake_list,self.ice_list,self.bad_list,self.red_list))
 
         match self.direction:
             case 'next':
@@ -426,8 +413,14 @@ class DAS_cleaner:
         else:
             self.showHDR = True
         self.display_images()
-    # def flipships(self, event = None):
-    #     self.direction = 'flag'
+    
+    def add_ice(self, event = None):
+        self.direction = 'flag'
+        if self.ice_list[self.file_index] == 'I':
+            self.ice_list[self.file_index] = ' '
+        else:
+            self.ice_list[self.file_index] = 'I'
+        self.display_images()
     
     
 def main():
