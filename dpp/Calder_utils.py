@@ -341,28 +341,21 @@ def sliding_window_FK(arr, window_shape,overlap = 2, rescale = False, fold = Tru
         window_shape[0],
         window_shape[1]
     )
+    #print(shape)
     strides = (
         arr.strides[0] * step_y,
         arr.strides[1] * step_x,
         arr.strides[0],
         arr.strides[1]
     )
-    
+    #print(strides)
     windows = as_strided(arr, shape=shape, strides=strides)
     weight = np.outer(np.hanning(window_shape[0]),np.hanning(window_shape[1]))
-
-    velweights = np.hanning(7)
-    velweights = velweights/np.sum(velweights)
 
     ks = np.fft.fftshift(np.fft.fftfreq(512,12))
     freqs = np.fft.rfftfreq(512,1/256)[1:]
     slope,_ = compute_FK_speed(ks,freqs)
     slope[slope > 10000] = 10000
-
-    slopebins = np.linspace(0,10000,num = 101)
-    centers = 0.5* (slopebins[:-1] + slopebins[1:])
-    slopebins[0] = -np.inf
-    slopebins[-1] = np.inf
 
     #acumulators
     results = []
@@ -370,17 +363,7 @@ def sliding_window_FK(arr, window_shape,overlap = 2, rescale = False, fold = Tru
     maxs = []
     Ls = []
     vels = []
-    entfull = []
-    flags = []
 
-    # c_min = 1000
-    # c_max = 5000
-    # f = np.fft.rfftfreq(512, d = 1/256)[1:]
-    # k1 = np.fft.fftshift(np.fft.fftfreq(512, d = 12))
-    # kk,ff = np.meshgrid(k1,f)
-    # slow = ff<np.abs(kk*c_min)
-    # fast = ff > np.abs(kk*c_max)
-    # full = slow+fast
 
     for j in range(shape[1]): #range
         map = np.zeros(shape = (int(window_shape[0]/2),window_shape[1]))
@@ -390,15 +373,15 @@ def sliding_window_FK(arr, window_shape,overlap = 2, rescale = False, fold = Tru
             win = windows[i, j]*weight
             fft_result = np.fft.fftshift(np.abs((np.fft.rfft2(win,axes=(-1,-2),norm = 'forward'))),axes=1)[1:,:]#this removes time DC offset
             pos.append((i * step_y, j * step_x))
-            map = map+fft_result
+            #map = map+fft_result
             intermediate.append(fft_result)
-            N = N+1
-        
-        mean_img = map/N
+            #N = N+1
+        mean_img = np.mean(intermediate, axis = 0)
+        #mean_img = map/N
         stdev = np.std(intermediate)
 
         for f in intermediate:
-            tmp= NDI.gaussian_filter((f-mean_img)/stdev,sigma=(1))
+            tmp= NDI.gaussian_filter(f-mean_img/stdev,sigma=(1))
             peak_lock = np.unravel_index(np.argmax(tmp), tmp.shape)
             fmax=peak_lock[0]
             kmax = np.round(np.abs(peak_lock[1]-window_shape[1]/2))
@@ -407,18 +390,13 @@ def sliding_window_FK(arr, window_shape,overlap = 2, rescale = False, fold = Tru
             maxs.append((fmax,kmax))
             vels.append(np.round(slope[peak_lock]))
 
-        # tmp = [fk[~full].flatten() for fk in intermediate]
-        # ents = KL_div(20*np.log10(tmp))
-        # thresh = np.median(ents)+2.5*np.std(ents)
-        # flag = np.zeros_like(ents)
-        # flag[ents>thresh] = 1
-        # entfull.extend(ents)
-        # flags.extend(flag)
-        #print(intermediate)
-        results.extend(20*np.log10(intermediate))
+        intermediate = 20*np.log10(intermediate)
+        mintermediate = np.mean(intermediate)
+        results.extend((intermediate-mintermediate))
 
     if rescale:
         vals = np.stack(results,axis=0)[:,128:,:]
+        #vals[vals<0] = 0
         #print(vals.shape)
         low = np.floor(np.percentile(vals,1)) #file wise
         high = np.ceil(np.percentile(vals,99)) #filewise
