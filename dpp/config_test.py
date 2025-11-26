@@ -9,6 +9,7 @@ config['DataInfo'] = {'Directory':'your/directory/here', #directory to where the
 config['ProcessingInfo'] = {'n_synthetic':'auto', # number of synthetic receiver positions to be used along the fiber, auto means fill it up acording to synthetic spacing, meters means auto, but spacing is in units of meters and auto fills the full extent of the fiber.
                             'synthetic_spacing':'250', #number of channels between the start of each synthetic receiver
                             'c_start':'0', #where to start the channel idx along the fiber? idx or meters as described above
+                            'c_end':'',
                             'n_stack':'5', #how many chanels to use within one synthetic receiver
                             'stack':'true', #do you want to stack these channels
                             'stackaxis':'1', #along which axis do you want to stack, keep to 1 to avoid bugs
@@ -39,10 +40,11 @@ config['FKInfo'] = {'nfft_time':'1024', #parameters in units of samples for the 
                     'nfft_space':'2056', #how many channel to include, both should be a power of 2 for speed (applied after any stacking)
                     'rescale':'true',
                     'overlap':'2',
-                    'fold':'true',
-                    'vmin':'1450',
-                    'vmax':'3500',
-                    'samplemethod':'none'
+                    'fold':'true', #do you want to fold your Fks over around the 0 wavenumber
+                    'vmin':'-1', #dod oyu want to velocity filter your saved fks? set to blank for no minimum vel
+                    'vmax':'-1', #do you want to velocity filter your saved fks? set to blank for no max vel
+                    'samplemethod':'none', #do you want to sample other non signals? none for no, same for a random selection of the same number, in files with no water band, randomly pull n images for more diverse training material
+                    'n':'100'
                     }
 
 def main():

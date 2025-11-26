@@ -327,6 +327,7 @@ def LPS_block(path_data,channels,verbose,config, fileIDs):
         case 'FK':
             FKDir = os.path.join(odir , 'FK',fdate + 'Z')
             os.makedirs(FKDir,exist_ok=True)
+            
             for fk in fks:
                 fname = 'FS'+str(fs_target)+'_T'+ str(fk[1][0]) + '_X' + str(fk[1][1]) + '_F' + str(fk[2][0]) + '_K' +str(fk[2][1]) +'_V'+ str(fk[3])+ '_L'+str(fk[4]) + '_' + fdate + 'Z.png'
                 data_name = os.path.join(FKDir,fname)
@@ -376,6 +377,15 @@ def main():
 
     n_synth = config['ProcessingInfo']['n_synthetic']
     
+    c_end = config['ProcessingInfo']['c_end']
+    if c_end:
+        c_end = len(chans)-1
+    else:
+        c_end = int(c_end)-1
+
+
+
+
     match n_synth:
         case '-1':
             channels = None
@@ -383,12 +393,12 @@ def main():
         case 'auto':
             spacing = int(config['ProcessingInfo']['synthetic_spacing'])
             nstack = int(config['ProcessingInfo']['n_stack'])
-            c_start = int(config['ProcessingInfo']['c_start'])
+            c_start = int(config['ProcessingInfo']['c_start']) 
             n_synthetic = np.floor(len(chans)/spacing)
             n_synthetic = int(n_synthetic)
             for i in range(n_synthetic):
                 channels.extend([x+(i*spacing)+c_start for x in range(0,nstack)])
-            channels[:] = [x for x in channels if x <= len(chans)-1]
+            channels[:] = [x for x in channels if x <= c_end]
 
         case 'meter':
             dx = int(chans[1]-chans[0])
@@ -404,13 +414,14 @@ def main():
             
             for i in range(n_synthetic):
                 channels.extend([x+(i*spacing)+c_start for x in range(0,nstack)])
-            channels[:] = [x for x in channels if x <= len(chans)-1]
+            channels[:] = [x for x in channels if x <= c_end]
 
         case _:
             c_start = int(config['ProcessingInfo']['c_start'])
+            c_end = int(config['ProcessingInfo']['c_end'])
             for i in range(int(config['ProcessingInfo']['n_synthetic'])):
                 channels.extend([x+(i*int(config['ProcessingInfo']['synthetic_spacing']))+c_start for x in range(0,int(config['ProcessingInfo']['n_stack']))])
-            channels[:] = [x for x in channels if x <= len(chans)-1]
+            channels[:] = [x for x in channels if x <= c_end]
     
     n_workers = int(config['DataInfo']['n_workers'])
     verbose = config['ProcessingInfo'].getboolean('verbose')

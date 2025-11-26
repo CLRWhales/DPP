@@ -61,6 +61,7 @@ class DAS_cleaner:
         self.root.bind("<e>", self.add_earthquake)
         self.root.bind("<b>", self.add_bad)
         self.root.bind("<r>", self.add_red)
+        self.root.bind("<i>",self.add_ice)
 
         
     def load_directory(self):
@@ -80,6 +81,7 @@ class DAS_cleaner:
         self.earthquake_list = [' '] * len(self.file_paths)
         self.bad_list = [' '] * len(self.file_paths)
         self.red_list = [' '] * len(self.file_paths)
+        self.ice_list = [' '] *len(self.file_paths)
 
         self.showships = False
 
@@ -145,6 +147,7 @@ class DAS_cleaner:
             'whale_flag':self.whale_list,
             'ship_flag':self.ship_list,
             'earthquake_flag':self.earthquake_list,
+            'ice_flag':self.ice_list,
             'bad_flag':self.bad_list,
             'red_flag':self.red_list
         })
@@ -174,7 +177,7 @@ class DAS_cleaner:
         self.current_images.clear()
         self.current_images = []
 
-        flag_list = list(zip(self.whale_list,self.ship_list,self.earthquake_list,self.bad_list,self.red_list))
+        flag_list = list(zip(self.whale_list,self.ship_list,self.earthquake_list,self.ice_list,self.bad_list,self.red_list))
 
         match self.direction:
             case 'next':
@@ -410,8 +413,14 @@ class DAS_cleaner:
         else:
             self.showHDR = True
         self.display_images()
-    # def flipships(self, event = None):
-    #     self.direction = 'flag'
+    
+    def add_ice(self, event = None):
+        self.direction = 'flag'
+        if self.ice_list[self.file_index] == 'I':
+            self.ice_list[self.file_index] = ' '
+        else:
+            self.ice_list[self.file_index] = 'I'
+        self.display_images()
     
     
 def main():
