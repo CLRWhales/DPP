@@ -11,7 +11,7 @@ import datetime
 import os 
 from sympy import symbols,sympify
 
-import h5pydict as h5pydict
+import dpp.h5pydict as h5pydict
 
       
 def combine_units(units, operator='*'):

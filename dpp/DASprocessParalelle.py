@@ -3,16 +3,17 @@ import os
 import glob,time
 import numpy as np 
 from scipy.signal import detrend, resample, butter, sosfiltfilt
-from simpleDASreader4 import load_DAS_file, unwrap, combine_units #nned this if the other functions are uncommented
-from DASFFT import sneakyfft
+from dpp.simpleDASreader4 import load_DAS_file, unwrap, combine_units #nned this if the other functions are uncommented
+from dpp.DASFFT import sneakyfft
 import configparser
 import argparse
-import Calder_utils as Calder_utils
+import dpp.Calder_utils as Calder_utils
 import math
 import datetime
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from functools import partial
 import imageio
+import configparser
 #handling lack of tk on some linux distros. shoddy, need to fix in the future
 try:
     import tkinter as tk
@@ -22,55 +23,64 @@ else:
     available = True
     from tkinter import filedialog
 
-def load_INI():
+
+def find_INI():
     """
     Load a .ini from argument or file browser.
     Allows selecting a single file or a folder containing multiple .ini files.
     """
-    parser = argparse.ArgumentParser(description="Process a filename.")
-    parser.add_argument("filename", nargs="?", type=str, help="The name of the file to process")
+    parser = argparse.ArgumentParser(description="Process a filename or directory.")
+    parser.add_argument("path", nargs="?", type=str, help="The name of the file to process")
     args = parser.parse_args()
 
-    if args.filename:
-        config = configparser.ConfigParser()
-        config.read(args.filename)
-        return config
 
-    root = tk.Tk()
-    root.title("Select .ini file or folder")
-    result = []
+    if not args.path and available:
+        root = tk.Tk()
+        root.title("Select .ini file or folder")
 
-    def select_file():
-        path = filedialog.askopenfilename(
-            title="Select a .ini",
-            filetypes=[("INI files", "*.ini")]
-        )
-        if path:
-            result.append(path)
-            root.quit()
+        def select_file():
+            path = filedialog.askopenfilename(title="Select a .ini", filetypes=[("INI files", "*.ini")])
+            if path:
+                args.path = path
+                root.quit()
 
-    def select_folder():
-        folder = filedialog.askdirectory(title="Select folder with .ini")
-        if folder:
-            ini_files = [
-                os.path.join(folder, f)
-                for f in os.listdir(folder)
-                if f.lower().endswith(".ini")
-            ]
-            ini_files.sort()
-            if ini_files:
-                result.extend(ini_files)
-            root.quit()
+        def select_folder():
+            path = filedialog.askdirectory(title="Select folder with .ini")
+            if path:
+                args.path = path
+                root.quit()
 
-    btn_file = tk.Button(root, text="Select a .ini", command=select_file)
-    btn_file.pack(pady=10)
-    btn_folder = tk.Button(root, text="Select a folder", command=select_folder)
-    btn_folder.pack(pady=10)
+        btn_file = tk.Button(root, text="Select a .ini", command=select_file)
+        btn_file.pack(pady=10)
+        btn_folder = tk.Button(root, text="Select a folder", command=select_folder)
+        btn_folder.pack(pady=10)
+        root.mainloop()
+       
+        try:
+            root.destroy()
+        except tk.TclError:
+            pass  # Window already destroyed
 
-    root.mainloop()
-    root.destroy()
-    return result if result else None
+    
+    if not args.path:
+        print('no selection made')
+        return None
+    
+    ini_list = []
+    if os.path.isfile(args.path):
+        ini_list.append(args.path)
+    elif os.path.isdir(args.path):
+        ini_files = [
+            os.path.join(args.path, f)
+            for f in os.listdir(args.path)
+            if f.endswith('.ini') and os.path.isfile(os.path.join(args.path, f))
+        ]
+        ini_list.extend(ini_files)
+    else:
+        raise FileNotFoundError(f"The path '{args.path}' does not exist.")
 
+
+    return ini_list if ini_list else None
 
 
 def load_file(channels, verbose, filepath):
@@ -363,20 +373,11 @@ def LPS_block(path_data,channels,verbose,config, fileIDs):
             raise TypeError('input must be either "magnitude", "complex","cleaning","LTSA","Entropy", or doFk must be set to true')
         
 
-def main(config_path=None):
-    # Load config
-    import configparser
+def DASProcessParalelle(config_path=None):
+    # Load config file from path
+    
     config = configparser.ConfigParser()
     config.read(config_path)
-
-    if config_path:
-        config.read(config_path)
-    else:
-        # Tkinter selection fallback
-        cfg = load_INI()
-        if not cfg:
-            raise ValueError("could not find config")
-        return cfg
 
     #setup 
     filepaths = sorted( glob.glob(os.path.join(config['DataInfo']['directory'], '*.hdf5')))
@@ -411,12 +412,10 @@ def main(config_path=None):
     n_synth = config['ProcessingInfo']['n_synthetic']
     
     c_end = config['ProcessingInfo']['c_end']
-    if c_end:
-        c_end = len(chans)-1
-    else:
+    if len(c_end)>0:
         c_end = int(c_end)-1
-
-
+    else:
+        c_end = len(chans)-1
 
 
     match n_synth:
@@ -482,22 +481,36 @@ def main(config_path=None):
         for future in as_completed(futures):
             future.result()
         
-if __name__ == '__main__':
+
+    
+def main():
+    ini_list = find_INI()
+
+    if not ini_list:
+        print('No ini files found')
+        return
+    
+    print(f"\n=== {len(ini_list)} .ini file(s) selected ===")
     t_ex_start = time.perf_counter()
 
-    ini_list = load_INI()
-    if not ini_list:
-        raise ValueError("No .ini selected.")
-
-    print(f"\n=== {len(ini_list)} file(s) .ini selected ===")
-
     for ini_file in ini_list:
-        print(f"\n--- Start of {ini_file} ---")
-        main(config_path=ini_file)
-        print(f"--- End pf {ini_file} ---")
+        try:
+            print(f"\n--- Start of {ini_file} ---")
+            t_sub_start = time.perf_counter()
+            DASProcessParalelle(config_path=ini_file)
+            t_sub_end = time.perf_counter()
+            print(f"--- End of {ini_file}, Duration: {t_sub_end - t_sub_start:.2f}s ---")
+        except Exception as e:
+            #log and continue to next file
+            print(f"Error Processing '{ini_file}':{e}")
 
     t_ex_end = time.perf_counter()
     print(f"\n=== Duration: {t_ex_end - t_ex_start:.2f}s ===")
+
+
+
+if __name__ == '__main__':
+    main()
 
 
 
