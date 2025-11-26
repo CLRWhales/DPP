@@ -3,11 +3,11 @@ import os
 import glob,time
 import numpy as np 
 from scipy.signal import detrend, resample, butter, sosfiltfilt
-from dpp.simpleDASreader4 import load_DAS_file, unwrap, combine_units #nned this if the other functions are uncommented
-from dpp.DASFFT import sneakyfft
+from simpleDASreader4 import load_DAS_file, unwrap, combine_units #nned this if the other functions are uncommented
+from DASFFT import sneakyfft
 import configparser
 import argparse
-import dpp.Calder_utils as Calder_utils
+import Calder_utils as Calder_utils
 import math
 import datetime
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
@@ -24,28 +24,52 @@ else:
 
 def load_INI():
     """
-    this function loads an ini file from the terminal or file browser
-    TODO: 
-        build in a default/imput checking portion so that we can make sure that it is all good to run. 
+    Load a .ini from argument or file browser.
+    Allows selecting a single file or a folder containing multiple .ini files.
     """
-
     parser = argparse.ArgumentParser(description="Process a filename.")
     parser.add_argument("filename", nargs="?", type=str, help="The name of the file to process")
-    
     args = parser.parse_args()
-    
-    if args.filename is None and available:
-        root = tk.Tk()
-        root.withdraw()  # Hide the root window
-        args.filename = filedialog.askopenfilename(title="Select a file")
-        root.destroy()
-    
-    config = None
+
     if args.filename:
         config = configparser.ConfigParser()
-        config.read(filenames=args.filename)
-    
-    return config
+        config.read(args.filename)
+        return config
+
+    root = tk.Tk()
+    root.title("Select .ini file or folder")
+    result = []
+
+    def select_file():
+        path = filedialog.askopenfilename(
+            title="Select a .ini",
+            filetypes=[("INI files", "*.ini")]
+        )
+        if path:
+            result.append(path)
+            root.quit()
+
+    def select_folder():
+        folder = filedialog.askdirectory(title="Select folder with .ini")
+        if folder:
+            ini_files = [
+                os.path.join(folder, f)
+                for f in os.listdir(folder)
+                if f.lower().endswith(".ini")
+            ]
+            ini_files.sort()
+            if ini_files:
+                result.extend(ini_files)
+            root.quit()
+
+    btn_file = tk.Button(root, text="Select a .ini", command=select_file)
+    btn_file.pack(pady=10)
+    btn_folder = tk.Button(root, text="Select a folder", command=select_folder)
+    btn_folder.pack(pady=10)
+
+    root.mainloop()
+    root.destroy()
+    return result if result else None
 
 
 
@@ -337,21 +361,30 @@ def LPS_block(path_data,channels,verbose,config, fileIDs):
             
         case _:
             raise TypeError('input must be either "magnitude", "complex","cleaning","LTSA","Entropy", or doFk must be set to true')
+        
 
-def main():
-    config = None
-    config = load_INI()
+def main(config_path=None):
+    # Load config
+    import configparser
+    config = configparser.ConfigParser()
+    config.read(config_path)
 
-    if not config:
-        raise ValueError("could not find the config, check file path")
+    if config_path:
+        config.read(config_path)
+    else:
+        # Tkinter selection fallback
+        cfg = load_INI()
+        if not cfg:
+            raise ValueError("could not find config")
+        return cfg
 
     #setup 
-    filepaths = sorted( glob.glob(os.path.join(config['DataInfo']['Directory'], '*.hdf5')))
+    filepaths = sorted( glob.glob(os.path.join(config['DataInfo']['directory'], '*.hdf5')))
     files = [os.path.basename(f) for f in filepaths] 
     fileIDs = [int(item.split('.')[0]) for item in files]
 
     if len(fileIDs)== 0:
-        print(os.path.join(config['DataInfo']['Directory'], '*.hdf5'))
+        print(os.path.join(config['DataInfo']['directory'], '*.hdf5'))
         #raise ValueError("Data files cannot be found, check path ends with slash")
     
     if len(config['ProcessingInfo']['starttime'])>0:
@@ -450,11 +483,22 @@ def main():
             future.result()
         
 if __name__ == '__main__':
+    t_ex_start = time.perf_counter()
 
-    #config_name = "C:/Users/Calder/Workspace/Python_Env/DAS/example.ini"
-    t_ex_start=time.perf_counter()  
-    main()
-    t_ex_end=time.perf_counter(); print(f'duration: {t_ex_end-t_ex_start}s'); 
+    ini_list = load_INI()
+    if not ini_list:
+        raise ValueError("No .ini selected.")
+
+    print(f"\n=== {len(ini_list)} file(s) .ini selected ===")
+
+    for ini_file in ini_list:
+        print(f"\n--- Start of {ini_file} ---")
+        main(config_path=ini_file)
+        print(f"--- End pf {ini_file} ---")
+
+    t_ex_end = time.perf_counter()
+    print(f"\n=== Duration: {t_ex_end - t_ex_start:.2f}s ===")
+
 
 
 
