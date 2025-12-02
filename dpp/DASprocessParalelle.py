@@ -2,7 +2,7 @@
 import os
 import glob,time
 import numpy as np 
-from scipy.signal import detrend, resample, butter, sosfiltfilt
+from scipy.signal import detrend, resample, butter, sosfiltfilt, decimate
 from dpp.simpleDASreader4 import load_DAS_file, unwrap, combine_units #nned this if the other functions are uncommented
 from dpp.DASFFT import sneakyfft
 import configparser
@@ -14,6 +14,9 @@ from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_compl
 from functools import partial
 import imageio
 import configparser
+import gc
+import random
+
 #handling lack of tk on some linux distros. shoddy, need to fix in the future
 try:
     import tkinter as tk
@@ -110,11 +113,11 @@ def load_files(path_data, channels, verbose, fileIDs):
         for listx in results: 
             list_data.append(listx[0]); list_meta.append(listx[1])
 
-        return (list_data,list_meta, fileIDs)
+        return list_data,list_meta, fileIDs
 
 
 
-def preprocess_DAS(data, list_meta, unwr=True, integrate=True, useSensitivity=True, spikeThr=None): 
+def preprocess_DAS(data, list_meta, unwr=False, integrate=True, useSensitivity=True, spikeThr=None): 
     """
     preprocess loaded DAS data, for details see SimpleDASreader4  -> from kevinG
     """
@@ -126,10 +129,18 @@ def preprocess_DAS(data, list_meta, unwr=True, integrate=True, useSensitivity=Tr
                              used with time differentiated phase data')
     if unwr and meta['header']['spatialUnwrRange']:
         data=unwrap(data,meta['header']['spatialUnwrRange'],axis=1)
+        gc
+
     unit=meta['appended']['unit']
     #print(f"DEBUG: unit={unit}")
     if spikeThr is not None:
         data[np.abs(data)>spikeThr] = 0
+
+    if integrate:
+        np.cumsum(data,axis=0,out = data)*meta['header']['dt']
+        unit=combine_units([unit, unit.split('/')[-1]])
+        #print(f"DEBUG: unit={unit}")
+
     if useSensitivity:
         if 'sensitivity' in meta["header"].keys():
             data/=meta['header']['sensitivity']
@@ -141,10 +152,6 @@ def preprocess_DAS(data, list_meta, unwr=True, integrate=True, useSensitivity=Tr
             raise KeyError("!! no sensitivity keys in meta dict")
         unit=combine_units([unit, sensitivity_unit],'/')
         #print(f"DEBUG: sensitivity_unit={sensitivity_unit}, unit={unit}")
-    if integrate:
-        data=np.cumsum(data,axis=0)*meta['header']['dt']
-        unit=combine_units([unit, unit.split('/')[-1]])
-        #print(f"DEBUG: unit={unit}")
     meta['appended']['unit']=unit
    
     #update all metas
@@ -161,21 +168,32 @@ def LPS_block(path_data,channels,verbose,config, fileIDs):
     #load into list
     do_fk = config['FFTInfo'].getboolean('do_fk')
 
-    # if do_fk:
-    #     FKchans = channels
-    #     channels = None
+    if do_fk:
+        FKchans = channels
+        channels = None
 
     list_data, list_meta, _ = load_files(path_data = path_data,
                                       channels = channels,
                                       verbose = verbose,
                                       fileIDs= fileIDs)
+    
     data =  np.concatenate(list_data, axis=0)
-    data, list_meta = preprocess_DAS(data, list_meta)
 
-    # if do_fk:
-    #     data = data[:,FKchans]
+    data, list_meta = preprocess_DAS(data,
+                                     list_meta,
+                                     unwr = config['ProcessingInfo'].getboolean('unwr'),
+                                     integrate=config['ProcessingInfo'].getboolean('integrate'))
 
-    data /= 1E-9 #scaling into units of strain is handled, this moves it to nano strain? 
+    if do_fk:
+        c_start = int(config['Append']['c_start'])
+        c_end = int(config['Append']['c_end'])
+        data = data[:,c_start:c_end].copy()
+        q = int(config['ProcessingInfo']['synthetic_spacing'])
+        data = decimate(data,q = q, axis = 1, ftype='iir', zero_phase=False)
+        #print(data.dtype)
+        #data = data[:,FKchans]
+
+    data /= 1E-9 #scaling into units of strain is handled in proprocess das, this moves it to nano strain? 
 
     if config['ProcessingInfo'].getboolean('cmn_filt'):
         data-=np.median(data,axis = 1)[:,None]
@@ -191,7 +209,6 @@ def LPS_block(path_data,channels,verbose,config, fileIDs):
 
     #do resampling
     dt = list_meta[0]['header']['dt']
-    dx = list_meta[0]['appended']['channels'][chIDX][1] - list_meta[0]['appended']['channels'][chIDX][0]
     if config['ProcessingInfo']['fs_target'] == 'auto':
         fs_target = 2**math.floor(math.log(1/dt,2))
     else:
@@ -200,9 +217,9 @@ def LPS_block(path_data,channels,verbose,config, fileIDs):
     num = data.shape[0]/(1/fs_target)*dt
     num = num.astype(int)
 
-    #perfomring some lowpass AA filtering
-    sos1 = butter(N = 6,Wn = fs_target/2, btype='low', fs = 1/dt, output= 'sos')
-    data = sosfiltfilt(sos1,data,axis = 0)
+    #doesnt immediately seem necessary
+    # sos1 = butter(N = 6,Wn = fs_target/2, btype='low', fs = 1/dt, output= 'sos')
+    # data = sosfiltfilt(sos1,data,axis = 0)
     data = resample(data,num ,axis = 0);
     data=detrend(data, axis=0, type='linear');
     dt_new = 1/fs_target
@@ -241,17 +258,20 @@ def LPS_block(path_data,channels,verbose,config, fileIDs):
         
     
     if do_fk:
+        chIDX = FKchans
+        dx = list_meta[0]['appended']['channels'][chIDX][1] - list_meta[0]['appended']['channels'][chIDX][0]
         times = np.arange(data.shape[0])*dt_new
         windowshape = (int(config['FKInfo']['nfft_time']),int(config['FKInfo']['nfft_space']))
         overlap = int(config['FKInfo']['overlap'])
         rsbool = config['FKInfo'].getboolean('rescale')
         fold= config['FKInfo'].getboolean('fold')
-        fks = Calder_utils.sliding_window_FK(data,windowshape,overlap,rsbool,fold) 
+        fcut = config['FilterInfo'].getfloat('lowcut')
+        fks = Calder_utils.sliding_window_FK(data,windowshape,dx,dt_new, fcut, overlap,rsbool,fold) 
         del data
         freqs = np.fft.rfftfreq(n=windowshape[0],d=dt_new)
         WN = np.fft.fftshift(np.fft.fftfreq(n=windowshape[1],d=dx))
         savetype = 'FK'
-        # chIDX = FKchans
+        
     else:
     # STFT 
         match config['FFTInfo']['input_type']:
@@ -361,14 +381,78 @@ def LPS_block(path_data,channels,verbose,config, fileIDs):
         case 'FK':
             FKDir = os.path.join(odir , 'FK',fdate + 'Z')
             os.makedirs(FKDir,exist_ok=True)
-            
-            for fk in fks:
-                fname = 'FS'+str(fs_target)+'_T'+ str(fk[1][0]) + '_X' + str(fk[1][1]) + '_F' + str(fk[2][0]) + '_K' +str(fk[2][1]) +'_V'+ str(fk[3])+ '_L'+str(fk[4]) + '_' + fdate + 'Z.png'
-                data_name = os.path.join(FKDir,fname)
-                #print(fk[1].dtype)
-                imageio.imwrite(data_name,fk[0])
-                
-            
+
+            vmin = config['FKInfo'].getfloat('vmin')
+            if vmin < 0:
+                vmin = 0
+            vmax = config['FKInfo'].getfloat('vmax')
+            if vmax < 0:
+                vmax = 10000
+
+            nfks = config['FKInfo'].getint('n')
+            thresh = config['FKInfo'].getfloat('thresh')
+
+            sample_method = config['FKInfo']['sample_method']
+            match sample_method:
+                case 'none': 
+                    flags = [(vmin <= fk[3] <= vmax) and (fk[2][2] >= thresh) for fk in fks]
+                    in_range_idx = [i for i, flag in enumerate(flags) if flag]
+                    for i in in_range_idx:
+                        fk = fks[i]
+                        fname = 'FS'+str(fs_target)+'_T'+ str(fk[1][0]) + '_X' + str(fk[1][1]) + '_F' + str(fk[2][0]) + '_K' +str(fk[2][1]) +'_V'+ str(fk[3])+ '_L'+str(fk[4]) + '_' + fdate + 'Z.png'
+                        data_name = os.path.join(FKDir,fname)
+                        imageio.imwrite(data_name,fk[0])
+
+                case 'random':
+                    flags = [(vmin <= fk[3] <= vmax) and (fk[2][2] >= thresh) for fk in fks]
+                    in_range_idx = [i for i, flag in enumerate(flags) if flag]
+                    out_range_idx = [i for i, flag in enumerate(flags) if not flag]
+                    true_n = nfks - len(in_range_idx)
+
+                    for i in in_range_idx:
+                        fk = fks[i]
+                        fname = 'FS'+str(fs_target)+'_T'+ str(fk[1][0]) + '_X' + str(fk[1][1]) + '_F' + str(fk[2][0]) + '_K' +str(fk[2][1]) +'_V'+ str(fk[3])+ '_L'+str(fk[4]) + '_' + fdate + 'Z.png'
+                        data_name = os.path.join(FKDir,fname)
+                        imageio.imwrite(data_name,fk[0])
+                    
+                    if true_n >0:
+                        sampled_idx = random.sample(out_range_idx, min(true_n, len(out_range_idx)))
+                        for i in sampled_idx:
+                            fk = fks[i]
+                            fname = 'FS'+str(fs_target)+'_T'+ str(fk[1][0]) + '_X' + str(fk[1][1]) + '_F' + str(fk[2][0]) + '_K' +str(fk[2][1]) +'_V'+ str(fk[3])+ '_L'+str(fk[4]) + '_' + fdate + 'Z.png'
+                            data_name = os.path.join(FKDir,fname)
+                            imageio.imwrite(data_name,fk[0])
+                    
+                case 'all':
+                    for fk in fks:
+                        fname = 'FS'+str(fs_target)+'_T'+ str(fk[1][0]) + '_X' + str(fk[1][1]) + '_F' + str(fk[2][0]) + '_K' +str(fk[2][1]) +'_V'+ str(fk[3])+ '_L'+str(fk[4]) + '_' + fdate + 'Z.png'
+                        data_name = os.path.join(FKDir,fname)
+                        #print(fk[1].dtype)
+                        imageio.imwrite(data_name,fk[0])
+
+                case 'same':
+                    flags = [vmin <= fk[3] <= vmax for fk in fks]
+                    in_range_idx = [i for i, flag in enumerate(flags) if flag]
+                    out_range_idx = [i for i, flag in enumerate(flags) if not flag]
+                    true_n = len(in_range_idx)
+
+                    for i in in_range_idx:
+                        fk = fks[i]
+                        fname = 'FS'+str(fs_target)+'_T'+ str(fk[1][0]) + '_X' + str(fk[1][1]) + '_F' + str(fk[2][0]) + '_K' +str(fk[2][1]) +'_V'+ str(fk[3])+ '_L'+str(fk[4]) + '_' + fdate + 'Z.png'
+                        data_name = os.path.join(FKDir,fname)
+                        imageio.imwrite(data_name,fk[0])
+                    
+                    if true_n >0:
+                        sampled_idx = random.sample(out_range_idx, min(true_n, len(out_range_idx)))
+                        for i in sampled_idx:
+                            fk = fks[sampled_idx]
+                            fname = 'FS'+str(fs_target)+'_T'+ str(fk[1][0]) + '_X' + str(fk[1][1]) + '_F' + str(fk[2][0]) + '_K' +str(fk[2][1]) +'_V'+ str(fk[3])+ '_L'+str(fk[4]) + '_' + fdate + 'Z.png'
+                            data_name = os.path.join(FKDir,fname)
+                            imageio.imwrite(data_name,fk[0])
+
+
+            del fks
+
         case _:
             raise TypeError('input must be either "magnitude", "complex","cleaning","LTSA","Entropy", or doFk must be set to true')
         
@@ -465,7 +549,10 @@ def DASProcessParalelle(config_path=None):
     os.makedirs(outputdir)
     
     config['Append'] = {'first':fileIDs[0],
-                        'outputdir':outputdir}
+                        'outputdir':outputdir,
+                        'c_start':c_start,
+                        'c_end':c_end}
+    
 
     if verbose:
         print(path_data)

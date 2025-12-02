@@ -17,7 +17,9 @@ config['ProcessingInfo'] = {'n_synthetic':'auto', # number of synthetic receiver
                             'starttime' : '', #optional, in the format HHMMSS if you only want to process some of the data
                             'stoptime': '', # optional, in the format HHMMSS, if you only want to process some of the data
                             'verbose': 'false', # diagnositic information during the run, troubleshooting only
-                            'cmn_filt': 'false' #this is a place holder for common mode filtering toggle, it does nothing. 
+                            'cmn_filt': 'false', #this is a place holder for common mode filtering toggle, it does nothing.
+                            'unwr':'false', #do you want to phase unwrap the signal through space 
+                            'integrate':'true' #do you want to time intrgrate the signal
                             }
 config['FFTInfo'] = {'input_type':'time', #unit for fft parameter definition (time, point)
                      'n_fft':'0.5', #if time, Hz resoltuion of spectrogram, if points, n points to include, will add zero padding if necessary
@@ -36,15 +38,16 @@ config['FilterInfo'] = {'type':'highpass', #can be highpass, lowpass, bandpass, 
                         'zerophase':'0', #filter zerophase
                         'alphataper':'0.1' #curently doesnt do anything
                         }
-config['FKInfo'] = {'nfft_time':'1024', #parameters in units of samples for the fk transform (how many time points) (applied after resampling)
-                    'nfft_space':'2056', #how many channel to include, both should be a power of 2 for speed (applied after any stacking)
+config['FKInfo'] = {'nfft_time':'512', #parameters in units of samples for the fk transform (how many time points) (applied after resampling)
+                    'nfft_space':'512', #how many channel to include, both should be a power of 2 for speed (applied after any stacking)
                     'rescale':'true',
                     'overlap':'2',
                     'fold':'true', #do you want to fold your Fks over around the 0 wavenumber
-                    'vmin':'-1', #dod oyu want to velocity filter your saved fks? set to blank for no minimum vel
-                    'vmax':'-1', #do you want to velocity filter your saved fks? set to blank for no max vel
-                    'samplemethod':'none', #do you want to sample other non signals? none for no, same for a random selection of the same number, in files with no water band, randomly pull n images for more diverse training material
-                    'n':'100'
+                    'vmin':'1470', #dod oyu want to velocity filter your saved fks? set to blank for no minimum vel
+                    'vmax':'3500', #do you want to velocity filter your saved fks? set to blank for no max vel
+                    'thresh': '5',
+                    'sample_method':'none', #do you want to sample other non signals? none for no, same for a random selection of the same number, in files with no water band, randomly pull n images for more diverse training material
+                    'n':'50'
                     }
 
 def main():
