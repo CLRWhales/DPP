@@ -1,12 +1,12 @@
 # DPP
-Environment for DAS process paralelle and cleaning scripts 
+Environment for DAS process paralelle and cleaning scripts of ASN hdf5 data.
 
-Once installed in your environment there are a few actions you can take to simplyfy the processingof das data:
+Once installed in your environment there are a few actions you can take to simplyfy the processingof das data:  
 
-in the comand line:
-Run ExampleInI to generate a template ini file for processing instructions
-Run DASprocessParalelle to use the insturctions to process data quickly and save outputs
-Run DAScleaner to visualize the cleaning type results and perform coars annotation
+In the comand line:  
+Run ExampleInI to generate a template ini file for processing instructions  
+Run DASprocessParalelle to use the insturctions to process data quickly and save outputs  
+Run DAScleaner to visualize the cleaning type results and perform coars annotation  
 
 If you need to download AIS data for cleaning purposes it is possible to do so using the collection of functions available in 
 Fetchmap AIS in a script similar to below: 
@@ -46,3 +46,6 @@ mappedAIS.to_csv('file/name/here')
 
 Note that the distance along fiber wil be relative to the 'start' ofthe fiber file, so depending on the order, you may need to reverse it.
 It may also be worth while caching the AIS data frames locally after download so that you have them if they are deleted from the server.
+
+Acknowledgement:  
+This project has received funding from the European Union's Horizon Europe research and innovation programme under the Marie Sklodowska-Curie grant agreement no. 101119769 (SEASOUNDS Doctoral Network).

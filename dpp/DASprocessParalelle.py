@@ -2,17 +2,21 @@
 import os
 import glob,time
 import numpy as np 
-from scipy.signal import detrend, resample, butter, sosfiltfilt
-from simpleDASreader4 import load_DAS_file, unwrap, combine_units #nned this if the other functions are uncommented
-from DASFFT import sneakyfft
+from scipy.signal import detrend, resample, butter, sosfiltfilt, decimate
+from dpp.simpleDASreader4 import load_DAS_file, unwrap, combine_units #nned this if the other functions are uncommented
+from dpp.DASFFT import sneakyfft
 import configparser
 import argparse
-import Calder_utils as Calder_utils
+import dpp.Calder_utils as Calder_utils
 import math
 import datetime
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from functools import partial
 import imageio
+import configparser
+import gc
+import random
+
 #handling lack of tk on some linux distros. shoddy, need to fix in the future
 try:
     import tkinter as tk
@@ -22,55 +26,64 @@ else:
     available = True
     from tkinter import filedialog
 
-def load_INI():
+
+def find_INI():
     """
     Load a .ini from argument or file browser.
     Allows selecting a single file or a folder containing multiple .ini files.
     """
-    parser = argparse.ArgumentParser(description="Process a filename.")
-    parser.add_argument("filename", nargs="?", type=str, help="The name of the file to process")
+    parser = argparse.ArgumentParser(description="Process a filename or directory.")
+    parser.add_argument("path", nargs="?", type=str, help="The name of the file to process")
     args = parser.parse_args()
 
-    if args.filename:
-        config = configparser.ConfigParser()
-        config.read(args.filename)
-        return config
 
-    root = tk.Tk()
-    root.title("Select .ini file or folder")
-    result = []
+    if not args.path and available:
+        root = tk.Tk()
+        root.title("Select .ini file or folder")
 
-    def select_file():
-        path = filedialog.askopenfilename(
-            title="Select a .ini",
-            filetypes=[("INI files", "*.ini")]
-        )
-        if path:
-            result.append(path)
-            root.quit()
+        def select_file():
+            path = filedialog.askopenfilename(title="Select a .ini", filetypes=[("INI files", "*.ini")])
+            if path:
+                args.path = path
+                root.quit()
 
-    def select_folder():
-        folder = filedialog.askdirectory(title="Select folder with .ini")
-        if folder:
-            ini_files = [
-                os.path.join(folder, f)
-                for f in os.listdir(folder)
-                if f.lower().endswith(".ini")
-            ]
-            ini_files.sort()
-            if ini_files:
-                result.extend(ini_files)
-            root.quit()
+        def select_folder():
+            path = filedialog.askdirectory(title="Select folder with .ini")
+            if path:
+                args.path = path
+                root.quit()
 
-    btn_file = tk.Button(root, text="Select a .ini", command=select_file)
-    btn_file.pack(pady=10)
-    btn_folder = tk.Button(root, text="Select a folder", command=select_folder)
-    btn_folder.pack(pady=10)
+        btn_file = tk.Button(root, text="Select a .ini", command=select_file)
+        btn_file.pack(pady=10)
+        btn_folder = tk.Button(root, text="Select a folder", command=select_folder)
+        btn_folder.pack(pady=10)
+        root.mainloop()
+       
+        try:
+            root.destroy()
+        except tk.TclError:
+            pass  # Window already destroyed
 
-    root.mainloop()
-    root.destroy()
-    return result if result else None
+    
+    if not args.path:
+        print('no selection made')
+        return None
+    
+    ini_list = []
+    if os.path.isfile(args.path):
+        ini_list.append(args.path)
+    elif os.path.isdir(args.path):
+        ini_files = [
+            os.path.join(args.path, f)
+            for f in os.listdir(args.path)
+            if f.endswith('.ini') and os.path.isfile(os.path.join(args.path, f))
+        ]
+        ini_list.extend(ini_files)
+    else:
+        raise FileNotFoundError(f"The path '{args.path}' does not exist.")
 
+
+    return ini_list if ini_list else None
 
 
 def load_file(channels, verbose, filepath):
@@ -100,11 +113,11 @@ def load_files(path_data, channels, verbose, fileIDs):
         for listx in results: 
             list_data.append(listx[0]); list_meta.append(listx[1])
 
-        return (list_data,list_meta, fileIDs)
+        return list_data,list_meta, fileIDs
 
 
 
-def preprocess_DAS(data, list_meta, unwr=True, integrate=True, useSensitivity=True, spikeThr=None): 
+def preprocess_DAS(data, list_meta, unwr=False, integrate=True, useSensitivity=True, spikeThr=None): 
     """
     preprocess loaded DAS data, for details see SimpleDASreader4  -> from kevinG
     """
@@ -116,10 +129,18 @@ def preprocess_DAS(data, list_meta, unwr=True, integrate=True, useSensitivity=Tr
                              used with time differentiated phase data')
     if unwr and meta['header']['spatialUnwrRange']:
         data=unwrap(data,meta['header']['spatialUnwrRange'],axis=1)
+        gc
+
     unit=meta['appended']['unit']
     #print(f"DEBUG: unit={unit}")
     if spikeThr is not None:
         data[np.abs(data)>spikeThr] = 0
+
+    if integrate:
+        np.cumsum(data,axis=0,out = data)*meta['header']['dt']
+        unit=combine_units([unit, unit.split('/')[-1]])
+        #print(f"DEBUG: unit={unit}")
+
     if useSensitivity:
         if 'sensitivity' in meta["header"].keys():
             data/=meta['header']['sensitivity']
@@ -131,10 +152,6 @@ def preprocess_DAS(data, list_meta, unwr=True, integrate=True, useSensitivity=Tr
             raise KeyError("!! no sensitivity keys in meta dict")
         unit=combine_units([unit, sensitivity_unit],'/')
         #print(f"DEBUG: sensitivity_unit={sensitivity_unit}, unit={unit}")
-    if integrate:
-        data=np.cumsum(data,axis=0)*meta['header']['dt']
-        unit=combine_units([unit, unit.split('/')[-1]])
-        #print(f"DEBUG: unit={unit}")
     meta['appended']['unit']=unit
    
     #update all metas
@@ -151,21 +168,32 @@ def LPS_block(path_data,channels,verbose,config, fileIDs):
     #load into list
     do_fk = config['FFTInfo'].getboolean('do_fk')
 
-    # if do_fk:
-    #     FKchans = channels
-    #     channels = None
+    if do_fk:
+        FKchans = channels
+        channels = None
 
     list_data, list_meta, _ = load_files(path_data = path_data,
                                       channels = channels,
                                       verbose = verbose,
                                       fileIDs= fileIDs)
+    
     data =  np.concatenate(list_data, axis=0)
-    data, list_meta = preprocess_DAS(data, list_meta)
 
-    # if do_fk:
-    #     data = data[:,FKchans]
+    data, list_meta = preprocess_DAS(data,
+                                     list_meta,
+                                     unwr = config['ProcessingInfo'].getboolean('unwr'),
+                                     integrate=config['ProcessingInfo'].getboolean('integrate'))
 
-    data /= 1E-9 #scaling into units of strain is handled, this moves it to nano strain? 
+    if do_fk:
+        c_start = int(config['Append']['c_start'])
+        c_end = int(config['Append']['c_end'])
+        data = data[:,c_start:c_end].copy()
+        q = int(config['ProcessingInfo']['synthetic_spacing'])
+        data = decimate(data,q = q, axis = 1, ftype='iir', zero_phase=False)
+        #print(data.dtype)
+        #data = data[:,FKchans]
+
+    data /= 1E-9 #scaling into units of strain is handled in proprocess das, this moves it to nano strain? 
 
     if config['ProcessingInfo'].getboolean('cmn_filt'):
         data-=np.median(data,axis = 1)[:,None]
@@ -181,7 +209,6 @@ def LPS_block(path_data,channels,verbose,config, fileIDs):
 
     #do resampling
     dt = list_meta[0]['header']['dt']
-    dx = list_meta[0]['appended']['channels'][chIDX][1] - list_meta[0]['appended']['channels'][chIDX][0]
     if config['ProcessingInfo']['fs_target'] == 'auto':
         fs_target = 2**math.floor(math.log(1/dt,2))
     else:
@@ -190,9 +217,9 @@ def LPS_block(path_data,channels,verbose,config, fileIDs):
     num = data.shape[0]/(1/fs_target)*dt
     num = num.astype(int)
 
-    #perfomring some lowpass AA filtering
-    sos1 = butter(N = 6,Wn = fs_target/2, btype='low', fs = 1/dt, output= 'sos')
-    data = sosfiltfilt(sos1,data,axis = 0)
+    #doesnt immediately seem necessary
+    # sos1 = butter(N = 6,Wn = fs_target/2, btype='low', fs = 1/dt, output= 'sos')
+    # data = sosfiltfilt(sos1,data,axis = 0)
     data = resample(data,num ,axis = 0);
     data=detrend(data, axis=0, type='linear');
     dt_new = 1/fs_target
@@ -231,17 +258,20 @@ def LPS_block(path_data,channels,verbose,config, fileIDs):
         
     
     if do_fk:
+        chIDX = FKchans
+        dx = list_meta[0]['appended']['channels'][chIDX][1] - list_meta[0]['appended']['channels'][chIDX][0]
         times = np.arange(data.shape[0])*dt_new
         windowshape = (int(config['FKInfo']['nfft_time']),int(config['FKInfo']['nfft_space']))
         overlap = int(config['FKInfo']['overlap'])
         rsbool = config['FKInfo'].getboolean('rescale')
         fold= config['FKInfo'].getboolean('fold')
-        fks = Calder_utils.sliding_window_FK(data,windowshape,overlap,rsbool,fold) 
+        fcut = config['FilterInfo'].getfloat('lowcut')
+        fks = Calder_utils.sliding_window_FK(data,windowshape,dx,dt_new, fcut, overlap,rsbool,fold) 
         del data
         freqs = np.fft.rfftfreq(n=windowshape[0],d=dt_new)
         WN = np.fft.fftshift(np.fft.fftfreq(n=windowshape[1],d=dx))
         savetype = 'FK'
-        # chIDX = FKchans
+        
     else:
     # STFT 
         match config['FFTInfo']['input_type']:
@@ -351,32 +381,87 @@ def LPS_block(path_data,channels,verbose,config, fileIDs):
         case 'FK':
             FKDir = os.path.join(odir , 'FK',fdate + 'Z')
             os.makedirs(FKDir,exist_ok=True)
-            
-            for fk in fks:
-                fname = 'FS'+str(fs_target)+'_T'+ str(fk[1][0]) + '_X' + str(fk[1][1]) + '_F' + str(fk[2][0]) + '_K' +str(fk[2][1]) +'_V'+ str(fk[3])+ '_L'+str(fk[4]) + '_' + fdate + 'Z.png'
-                data_name = os.path.join(FKDir,fname)
-                #print(fk[1].dtype)
-                imageio.imwrite(data_name,fk[0])
-                
-            
+
+            vmin = config['FKInfo'].getfloat('vmin')
+            if vmin < 0:
+                vmin = 0
+            vmax = config['FKInfo'].getfloat('vmax')
+            if vmax < 0:
+                vmax = 10000
+
+            nfks = config['FKInfo'].getint('n')
+            thresh = config['FKInfo'].getfloat('thresh')
+
+            sample_method = config['FKInfo']['sample_method']
+            match sample_method:
+                case 'none': 
+                    flags = [(vmin <= fk[3] <= vmax) and (fk[2][2] >= thresh) for fk in fks]
+                    in_range_idx = [i for i, flag in enumerate(flags) if flag]
+                    for i in in_range_idx:
+                        fk = fks[i]
+                        fname = 'FS'+str(fs_target)+'_T'+ str(fk[1][0]) + '_X' + str(fk[1][1]) + '_F' + str(fk[2][0]) + '_K' +str(fk[2][1]) +'_V'+ str(fk[3])+ '_L'+str(fk[4]) + '_' + fdate + 'Z.png'
+                        data_name = os.path.join(FKDir,fname)
+                        imageio.imwrite(data_name,fk[0])
+
+                case 'random':
+                    flags = [(vmin <= fk[3] <= vmax) and (fk[2][2] >= thresh) for fk in fks]
+                    in_range_idx = [i for i, flag in enumerate(flags) if flag]
+                    out_range_idx = [i for i, flag in enumerate(flags) if not flag]
+                    true_n = nfks - len(in_range_idx)
+
+                    for i in in_range_idx:
+                        fk = fks[i]
+                        fname = 'FS'+str(fs_target)+'_T'+ str(fk[1][0]) + '_X' + str(fk[1][1]) + '_F' + str(fk[2][0]) + '_K' +str(fk[2][1]) +'_V'+ str(fk[3])+ '_L'+str(fk[4]) + '_' + fdate + 'Z.png'
+                        data_name = os.path.join(FKDir,fname)
+                        imageio.imwrite(data_name,fk[0])
+                    
+                    if true_n >0:
+                        sampled_idx = random.sample(out_range_idx, min(true_n, len(out_range_idx)))
+                        for i in sampled_idx:
+                            fk = fks[i]
+                            fname = 'FS'+str(fs_target)+'_T'+ str(fk[1][0]) + '_X' + str(fk[1][1]) + '_F' + str(fk[2][0]) + '_K' +str(fk[2][1]) +'_V'+ str(fk[3])+ '_L'+str(fk[4]) + '_' + fdate + 'Z.png'
+                            data_name = os.path.join(FKDir,fname)
+                            imageio.imwrite(data_name,fk[0])
+                    
+                case 'all':
+                    for fk in fks:
+                        fname = 'FS'+str(fs_target)+'_T'+ str(fk[1][0]) + '_X' + str(fk[1][1]) + '_F' + str(fk[2][0]) + '_K' +str(fk[2][1]) +'_V'+ str(fk[3])+ '_L'+str(fk[4]) + '_' + fdate + 'Z.png'
+                        data_name = os.path.join(FKDir,fname)
+                        #print(fk[1].dtype)
+                        imageio.imwrite(data_name,fk[0])
+
+                case 'same':
+                    flags = [vmin <= fk[3] <= vmax for fk in fks]
+                    in_range_idx = [i for i, flag in enumerate(flags) if flag]
+                    out_range_idx = [i for i, flag in enumerate(flags) if not flag]
+                    true_n = len(in_range_idx)
+
+                    for i in in_range_idx:
+                        fk = fks[i]
+                        fname = 'FS'+str(fs_target)+'_T'+ str(fk[1][0]) + '_X' + str(fk[1][1]) + '_F' + str(fk[2][0]) + '_K' +str(fk[2][1]) +'_V'+ str(fk[3])+ '_L'+str(fk[4]) + '_' + fdate + 'Z.png'
+                        data_name = os.path.join(FKDir,fname)
+                        imageio.imwrite(data_name,fk[0])
+                    
+                    if true_n >0:
+                        sampled_idx = random.sample(out_range_idx, min(true_n, len(out_range_idx)))
+                        for i in sampled_idx:
+                            fk = fks[sampled_idx]
+                            fname = 'FS'+str(fs_target)+'_T'+ str(fk[1][0]) + '_X' + str(fk[1][1]) + '_F' + str(fk[2][0]) + '_K' +str(fk[2][1]) +'_V'+ str(fk[3])+ '_L'+str(fk[4]) + '_' + fdate + 'Z.png'
+                            data_name = os.path.join(FKDir,fname)
+                            imageio.imwrite(data_name,fk[0])
+
+
+            del fks
+
         case _:
             raise TypeError('input must be either "magnitude", "complex","cleaning","LTSA","Entropy", or doFk must be set to true')
         
 
-def main(config_path=None):
-    # Load config
-    import configparser
+def DASProcessParalelle(config_path=None):
+    # Load config file from path
+    
     config = configparser.ConfigParser()
     config.read(config_path)
-
-    if config_path:
-        config.read(config_path)
-    else:
-        # Tkinter selection fallback
-        cfg = load_INI()
-        if not cfg:
-            raise ValueError("could not find config")
-        return cfg
 
     #setup 
     filepaths = sorted( glob.glob(os.path.join(config['DataInfo']['directory'], '*.hdf5')))
@@ -411,12 +496,10 @@ def main(config_path=None):
     n_synth = config['ProcessingInfo']['n_synthetic']
     
     c_end = config['ProcessingInfo']['c_end']
-    if c_end:
-        c_end = len(chans)-1
-    else:
+    if len(c_end)>0:
         c_end = int(c_end)-1
-
-
+    else:
+        c_end = len(chans)-1
 
 
     match n_synth:
@@ -466,7 +549,10 @@ def main(config_path=None):
     os.makedirs(outputdir)
     
     config['Append'] = {'first':fileIDs[0],
-                        'outputdir':outputdir}
+                        'outputdir':outputdir,
+                        'c_start':c_start,
+                        'c_end':c_end}
+    
 
     if verbose:
         print(path_data)
@@ -482,22 +568,36 @@ def main(config_path=None):
         for future in as_completed(futures):
             future.result()
         
-if __name__ == '__main__':
+
+    
+def main():
+    ini_list = find_INI()
+
+    if not ini_list:
+        print('No ini files found')
+        return
+    
+    print(f"\n=== {len(ini_list)} .ini file(s) selected ===")
     t_ex_start = time.perf_counter()
 
-    ini_list = load_INI()
-    if not ini_list:
-        raise ValueError("No .ini selected.")
-
-    print(f"\n=== {len(ini_list)} file(s) .ini selected ===")
-
     for ini_file in ini_list:
-        print(f"\n--- Start of {ini_file} ---")
-        main(config_path=ini_file)
-        print(f"--- End pf {ini_file} ---")
+        try:
+            print(f"\n--- Start of {ini_file} ---")
+            t_sub_start = time.perf_counter()
+            DASProcessParalelle(config_path=ini_file)
+            t_sub_end = time.perf_counter()
+            print(f"--- End of {ini_file}, Duration: {t_sub_end - t_sub_start:.2f}s ---")
+        except Exception as e:
+            #log and continue to next file
+            print(f"Error Processing '{ini_file}':{e}")
 
     t_ex_end = time.perf_counter()
     print(f"\n=== Duration: {t_ex_end - t_ex_start:.2f}s ===")
+
+
+
+if __name__ == '__main__':
+    main()
 
 
 
