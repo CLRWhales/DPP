@@ -62,6 +62,7 @@ class DAS_cleaner:
         self.root.bind("<b>", self.add_bad)
         self.root.bind("<r>", self.add_red)
         self.root.bind("<i>",self.add_ice)
+        self.root.bind("<u>", self.add_unknown)
 
         
     def load_directory(self):
@@ -82,6 +83,7 @@ class DAS_cleaner:
         self.bad_list = [' '] * len(self.file_paths)
         self.red_list = [' '] * len(self.file_paths)
         self.ice_list = [' '] *len(self.file_paths)
+        self.unknown_list = [' '] * len(self.file_paths)
 
         self.showships = False
 
@@ -149,7 +151,8 @@ class DAS_cleaner:
             'earthquake_flag':self.earthquake_list,
             'ice_flag':self.ice_list,
             'bad_flag':self.bad_list,
-            'red_flag':self.red_list
+            'red_flag':self.red_list,
+            'unknown_flag':self.unknown_list
         })
         df.to_csv(fname,index=False)
         prefix = df['Filenames'][0].split('_')[0]
@@ -172,12 +175,21 @@ class DAS_cleaner:
         plotpath = os.path.join(os.path.split(self.file_paths[1])[0] , 'id_flag.png')
         plt.savefig(plotpath)
         
+    def extract_frequency_band(self, path):
+        # extract frequency band from file path, if format is '0.5Hz_5Hz'
+        match = re.search(r'(\d+\.?\d*)\s*Hz[_/](\d+\.?\d*)\s*Hz', path, re.IGNORECASE)
+        if match:
+            low, high = match.groups()
+            return f"{low}-{high} Hz"
+
+        return "unknown"
+
     def display_images(self):
         self.canvas.delete("all")
         self.current_images.clear()
         self.current_images = []
 
-        flag_list = list(zip(self.whale_list,self.ship_list,self.earthquake_list,self.ice_list,self.bad_list,self.red_list))
+        flag_list = list(zip(self.whale_list,self.ship_list,self.earthquake_list,self.ice_list,self.bad_list,self.red_list, self.unknown_list))
 
         match self.direction:
             case 'next':
@@ -206,13 +218,37 @@ class DAS_cleaner:
                 self.flag_showing[-1] = ''.join(flag_list[self.file_index])
 
 
-        image = self.array_to_photoimage(combined_array, highlight_region=self.data_showing[-1].shape, file_names=self.files_showing, ships = None)
-        img_obj = self.canvas.create_image(self.canvas.winfo_width() // 2, self.canvas.winfo_height() // 2, anchor=tk.CENTER, image=image)
+        image = self.array_to_photoimage(
+            combined_array,
+            highlight_region=self.data_showing[-1].shape,
+            file_names=self.files_showing,
+            ships=None
+        )
+
+        img_obj = self.canvas.create_image(
+            self.canvas.winfo_width() // 2,
+            self.canvas.winfo_height() // 2,
+            anchor=tk.CENTER,
+            image=image
+        )
         self.current_images.append(image)
+
+        self.canvas.update_idletasks()
+
+        freq_band = self.extract_frequency_band(self.files_showing[-1])
+        title_text = f"Frequency band: {freq_band}"
+
+        self.canvas.create_text(
+            self.canvas.winfo_width() // 2,
+            20,
+            text=title_text,
+            fill="black",
+            font=("Arial", 15),
+            anchor="n"
+        )
+
         self.canvas.config(scrollregion=self.canvas.bbox("all"))
 
-
-        
     def array_to_photoimage(self, array, highlight_region=None, file_names=None, ships = None):
         #norm_array = (array - np.min(array)) / (np.max(array) - np.min(array))  # Normalize to 0-1
         a_mean = np.mean(array,axis=0)
@@ -396,6 +432,14 @@ class DAS_cleaner:
             self.red_list[self.file_index] = ' '
         else:
             self.red_list[self.file_index] = 'R'
+        self.display_images()
+
+    def add_unknown(self, event = None):
+        self.direction = 'flag'
+        if self.unknown_list[self.file_index] == 'U':
+            self.unknown_list[self.file_index] = ' '
+        else:
+            self.unknown_list[self.file_index] = 'U'
         self.display_images()
     
     def toggleships(self, event = None):
