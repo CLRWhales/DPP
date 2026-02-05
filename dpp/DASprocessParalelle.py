@@ -505,7 +505,8 @@ def DASProcessParalelle(config_path=None):
     channels = []
     meta = Calder_utils.load_meta(firstfile)
     chans = meta['header']['channels']
-    #print(meta['header'])
+    dshape = meta['header']['dimensionSizes']
+    #print(dshape)
 
     n_synth = config['ProcessingInfo']['n_synthetic']
     
@@ -562,12 +563,13 @@ def DASProcessParalelle(config_path=None):
     outputdir = os.path.join(config['SaveInfo']['directory'],config['SaveInfo']['run_name']+tnow)
     os.makedirs(outputdir)
     
-    
 
     config['Append'] = {'first':fileIDs[0],
                         'outputdir':outputdir,
                         'c_start':c_start,
-                        'c_end':c_end}
+                        'c_end':c_end,
+                        'ntimes':dshape[0],
+                        'total_chans':dshape[0]}
     
 
     if verbose:
