@@ -2,7 +2,7 @@
 import os
 import glob,time
 import numpy as np 
-from scipy.signal import detrend, resample, butter, sosfiltfilt, decimate
+from scipy.signal import detrend, resample, butter, sosfiltfilt, decimate, resample_poly
 from dpp.simpleDASreader4 import load_DAS_file, unwrap, combine_units #nned this if the other functions are uncommented
 from dpp.DASFFT import sneakyfft
 import configparser
@@ -172,24 +172,25 @@ def LPS_block(path_data,channels,verbose,config, fileIDs):
         FKchans = channels
         channels = None
 
+
     list_data, list_meta, _ = load_files(path_data = path_data,
                                       channels = channels,
                                       verbose = verbose,
                                       fileIDs= fileIDs)
     
-    data =  np.concatenate(list_data, axis=0)
-
-    data, list_meta = preprocess_DAS(data,
+    raw_data =  np.concatenate(list_data, axis=0)
+    del(list_data)
+    data, list_meta = preprocess_DAS(raw_data,
                                      list_meta,
                                      unwr = config['ProcessingInfo'].getboolean('unwr'),
                                      integrate=config['ProcessingInfo'].getboolean('integrate'))
-
+    del(raw_data)
     if do_fk:
         c_start = int(config['Append']['c_start'])
         c_end = int(config['Append']['c_end'])
-        data = data[:,c_start:c_end].copy()
+        trimmed_view = data[:,c_start:c_end]
         q = int(config['ProcessingInfo']['synthetic_spacing'])
-        data = decimate(data,q = q, axis = 1, ftype='iir', zero_phase=False)
+        data = resample_poly(trimmed_view,up = 1, down = q, axis = 1)
         #print(data.dtype)
         #data = data[:,FKchans]
 
@@ -259,7 +260,11 @@ def LPS_block(path_data,channels,verbose,config, fileIDs):
     
     if do_fk:
         chIDX = FKchans
+        # print(chIDX[1],chIDX[0])
+        # print(list_meta[0]['appended']['channels'][1],list_meta[0]['appended']['channels'][0])
+        # print(len(chIDX),len(list_meta[0]['appended']['channels']))
         dx = list_meta[0]['appended']['channels'][chIDX][1] - list_meta[0]['appended']['channels'][chIDX][0]
+        #dx = list_meta[0]['appended']['channels'][1] - list_meta[0]['appended']['channels'][0]
         times = np.arange(data.shape[0])*dt_new
         windowshape = (int(config['FKInfo']['nfft_time']),int(config['FKInfo']['nfft_space']))
         overlap = int(config['FKInfo']['overlap'])
@@ -271,6 +276,7 @@ def LPS_block(path_data,channels,verbose,config, fileIDs):
         freqs = np.fft.rfftfreq(n=windowshape[0],d=dt_new)
         WN = np.fft.fftshift(np.fft.fftfreq(n=windowshape[1],d=dx))
         savetype = 'FK'
+       
         
     else:
     # STFT 
@@ -388,14 +394,21 @@ def LPS_block(path_data,channels,verbose,config, fileIDs):
             vmax = config['FKInfo'].getfloat('vmax')
             if vmax < 0:
                 vmax = 10000
+            fmin = config['FKInfo'].getfloat('fmin')
+            if fmin < 0:
+                fmin = 0
+            fmax = config['FKInfo'].getfloat('fmax')
+            if fmax < 0:
+                fmax = np.max(freqs)
 
-            nfks = config['FKInfo'].getint('n')
+
             thresh = config['FKInfo'].getfloat('thresh')
-
+            flags = [(vmin <= fk[3] <= vmax) and (fk[2][2] >= thresh) and (fmin <=freqs[fk[2][0]] <=fmax) for fk in fks]
+            nfks = config['FKInfo'].getint('n')
+            
             sample_method = config['FKInfo']['sample_method']
             match sample_method:
                 case 'none': 
-                    flags = [(vmin <= fk[3] <= vmax) and (fk[2][2] >= thresh) for fk in fks]
                     in_range_idx = [i for i, flag in enumerate(flags) if flag]
                     for i in in_range_idx:
                         fk = fks[i]
@@ -404,7 +417,7 @@ def LPS_block(path_data,channels,verbose,config, fileIDs):
                         imageio.imwrite(data_name,fk[0])
 
                 case 'random':
-                    flags = [(vmin <= fk[3] <= vmax) and (fk[2][2] >= thresh) for fk in fks]
+                    #flags = [(vmin <= fk[3] <= vmax) and (fk[2][2] >= thresh) for fk in fks]
                     in_range_idx = [i for i, flag in enumerate(flags) if flag]
                     out_range_idx = [i for i, flag in enumerate(flags) if not flag]
                     true_n = nfks - len(in_range_idx)
@@ -431,7 +444,7 @@ def LPS_block(path_data,channels,verbose,config, fileIDs):
                         imageio.imwrite(data_name,fk[0])
 
                 case 'same':
-                    flags = [vmin <= fk[3] <= vmax for fk in fks]
+                    #flags = [vmin <= fk[3] <= vmax for fk in fks]
                     in_range_idx = [i for i, flag in enumerate(flags) if flag]
                     out_range_idx = [i for i, flag in enumerate(flags) if not flag]
                     true_n = len(in_range_idx)
@@ -492,6 +505,7 @@ def DASProcessParalelle(config_path=None):
     channels = []
     meta = Calder_utils.load_meta(firstfile)
     chans = meta['header']['channels']
+    #print(meta['header'])
 
     n_synth = config['ProcessingInfo']['n_synthetic']
     
@@ -548,6 +562,8 @@ def DASProcessParalelle(config_path=None):
     outputdir = os.path.join(config['SaveInfo']['directory'],config['SaveInfo']['run_name']+tnow)
     os.makedirs(outputdir)
     
+    
+
     config['Append'] = {'first':fileIDs[0],
                         'outputdir':outputdir,
                         'c_start':c_start,

@@ -43,8 +43,10 @@ config['FKInfo'] = {'nfft_time':'512', #parameters in units of samples for the f
                     'rescale':'true',
                     'overlap':'2',
                     'fold':'true', #do you want to fold your Fks over around the 0 wavenumber
-                    'vmin':'1470', #dod oyu want to velocity filter your saved fks? set to blank for no minimum vel
-                    'vmax':'3500', #do you want to velocity filter your saved fks? set to blank for no max vel
+                    'vmin':'1470', #dod oyu want to velocity filter your saved fks? set to -1 for no minimum vel
+                    'vmax':'3500', #do you want to velocity filter your saved fks? set to -1 for no max vel
+                    'fmin':'0', #do you want to fre filter your saved FKS? set to -1 for no min frequency 
+                    'fmax':'80', #do you want to fre filter your saved FKS? set to -1 for no max frequency 
                     'thresh': '5',
                     'sample_method':'none', #do you want to sample other non signals? none for no, same for a random selection of the same number, in files with no water band, randomly pull n images for more diverse training material
                     'n':'50'
