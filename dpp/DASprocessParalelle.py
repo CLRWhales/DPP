@@ -186,24 +186,27 @@ def LPS_block(path_data,channels,verbose,config, fileIDs):
                                       verbose = verbose,
                                       fileIDs= fileIDs)
     
-    data =  np.concatenate(list_data, axis=0)
+    raw_data =  np.concatenate(list_data, axis=0)
     del(list_data)
     gc.collect()
 
-    data, list_meta = preprocess_DAS(data,
+    data, list_meta = preprocess_DAS(raw_data,
                                      list_meta,
                                      unwr = config['ProcessingInfo'].getboolean('unwr'),
                                      integrate=config['ProcessingInfo'].getboolean('integrate'))
-    
+    del(raw_data)
+    gc.collect()
+
     if do_fk:
         c_start = int(config['Append']['c_start'])
         c_end = int(config['Append']['c_end'])
-        data = data[:,c_start:c_end].copy()
+        trimmed_view = data[:,c_start:c_end]
+        del data
         q = int(config['ProcessingInfo']['synthetic_spacing'])
-        data = resample_poly(data,up = 1, down = q, axis = 1)
+        data = resample_poly(trimmed_view,up = 1, down = q, axis = 1)
         #data = decimate(data,q = q, axis = 1, ftype='iir', zero_phase=False)
-        # del trimmed_view
-        # gc.collect()
+        del trimmed_view
+        gc.collect()
         #print(data.dtype)
         #data = data[:,FKchans]
 
@@ -273,11 +276,7 @@ def LPS_block(path_data,channels,verbose,config, fileIDs):
     
     if do_fk:
         chIDX = FKchans
-        # print(chIDX[1],chIDX[0])
-        # print(list_meta[0]['appended']['channels'][1],list_meta[0]['appended']['channels'][0])
-        # print(len(chIDX),len(list_meta[0]['appended']['channels']))
         dx = list_meta[0]['appended']['channels'][chIDX][1] - list_meta[0]['appended']['channels'][chIDX][0]
-        #dx = list_meta[0]['appended']['channels'][1] - list_meta[0]['appended']['channels'][0]
         times = np.arange(data.shape[0])*dt_new
         windowshape = (int(config['FKInfo']['nfft_time']),int(config['FKInfo']['nfft_space']))
         overlap = int(config['FKInfo']['overlap'])

@@ -304,11 +304,13 @@ def sliding_window_FK(arr, window_shape, dx, dt,fcut,overlap = 2,rescale = False
         results.extend((intermediate-mean_img)/stdev)
 
     if rescale:
-        vals = np.stack(results,axis=0)[:,128:,:]
+        #vals = np.stack(results,axis=0)[:,128:,:]
         #vals[vals<0] = 0
         #print(vals.shape)
-        low= np.floor(np.percentile(vals,75)) #file wise
-        high = np.ceil(np.percentile(vals,99)) #filewise
+        low,high = np.percentile(results,[75,99]) #file wise
+        #high = np.ceil(np.percentile(vals,99)) #filewise
+        low = np.floor(low)
+        high = np.ceil(high)
         #print(low)
         #del vals
         results = [(255*((r-low)/(high-low))).clip(0, 255).astype(np.uint8) for r in results]
