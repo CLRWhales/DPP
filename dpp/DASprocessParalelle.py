@@ -129,7 +129,7 @@ def preprocess_DAS(data, list_meta, unwr=False, integrate=True, useSensitivity=T
                              used with time differentiated phase data')
     if unwr and meta['header']['spatialUnwrRange']:
         data=unwrap(data,meta['header']['spatialUnwrRange'],axis=1)
-        gc
+        gc.collect()
 
     unit=meta['appended']['unit']
     #print(f"DEBUG: unit={unit}")
@@ -168,9 +168,17 @@ def LPS_block(path_data,channels,verbose,config, fileIDs):
     #load into list
     do_fk = config['FFTInfo'].getboolean('do_fk')
 
+
+    #total_rows = config['append'].getint('ntimes')*len(fileIDs)
+    #total_chans = len(channels)
     if do_fk:
         FKchans = channels
+        #c_end = int(config['Append']['c_end'])
         channels = None
+        #total_chans = config['append'].getint('total_chans')
+    
+    
+    #output_data = np.nan((total_rows,total_chans),dtype = np.float32)
 
 
     list_data, list_meta, _ = load_files(path_data = path_data,
@@ -178,19 +186,24 @@ def LPS_block(path_data,channels,verbose,config, fileIDs):
                                       verbose = verbose,
                                       fileIDs= fileIDs)
     
-    raw_data =  np.concatenate(list_data, axis=0)
+    data =  np.concatenate(list_data, axis=0)
     del(list_data)
-    data, list_meta = preprocess_DAS(raw_data,
+    gc.collect()
+
+    data, list_meta = preprocess_DAS(data,
                                      list_meta,
                                      unwr = config['ProcessingInfo'].getboolean('unwr'),
                                      integrate=config['ProcessingInfo'].getboolean('integrate'))
-    del(raw_data)
+    
     if do_fk:
         c_start = int(config['Append']['c_start'])
         c_end = int(config['Append']['c_end'])
-        trimmed_view = data[:,c_start:c_end]
+        data = data[:,c_start:c_end].copy()
         q = int(config['ProcessingInfo']['synthetic_spacing'])
-        data = resample_poly(trimmed_view,up = 1, down = q, axis = 1)
+        data = resample_poly(data,up = 1, down = q, axis = 1)
+        #data = decimate(data,q = q, axis = 1, ftype='iir', zero_phase=False)
+        # del trimmed_view
+        # gc.collect()
         #print(data.dtype)
         #data = data[:,FKchans]
 
@@ -273,6 +286,7 @@ def LPS_block(path_data,channels,verbose,config, fileIDs):
         fcut = config['FilterInfo'].getfloat('lowcut')
         fks = Calder_utils.sliding_window_FK(data,windowshape,dx,dt_new, fcut, overlap,rsbool,fold) 
         del data
+        gc.collect()
         freqs = np.fft.rfftfreq(n=windowshape[0],d=dt_new)
         WN = np.fft.fftshift(np.fft.fftfreq(n=windowshape[1],d=dx))
         savetype = 'FK'
@@ -298,6 +312,7 @@ def LPS_block(path_data,channels,verbose,config, fileIDs):
         spec, freqs, times = sneakyfft(data,N_samp,N_overlap,N_fft, window,fs_target)
         savetype = config['SaveInfo']['data_type']
         del data
+        gc.collect()
 
 
     #saving info
@@ -412,7 +427,7 @@ def LPS_block(path_data,channels,verbose,config, fileIDs):
                     in_range_idx = [i for i, flag in enumerate(flags) if flag]
                     for i in in_range_idx:
                         fk = fks[i]
-                        fname = 'FS'+str(fs_target)+'_T'+ str(fk[1][0]) + '_X' + str(fk[1][1]) + '_F' + str(fk[2][0]) + '_K' +str(fk[2][1]) +'_V'+ str(fk[3])+ '_L'+str(fk[4]) + '_' + fdate + 'Z.png'
+                        fname = 'FS'+str(fs_target)+'_T'+ str(fk[1][0]) + '_X' + str(fk[1][1]) + '_F' + str(fk[2][0]) + '_K' +str(fk[2][1]) +'_V'+ str(fk[3])+ '_L'+str(fk[4]) + '_R' + str(fk[2][2]) + '_' + fdate + 'Z.png'
                         data_name = os.path.join(FKDir,fname)
                         imageio.imwrite(data_name,fk[0])
 
@@ -424,7 +439,7 @@ def LPS_block(path_data,channels,verbose,config, fileIDs):
 
                     for i in in_range_idx:
                         fk = fks[i]
-                        fname = 'FS'+str(fs_target)+'_T'+ str(fk[1][0]) + '_X' + str(fk[1][1]) + '_F' + str(fk[2][0]) + '_K' +str(fk[2][1]) +'_V'+ str(fk[3])+ '_L'+str(fk[4]) + '_' + fdate + 'Z.png'
+                        fname = 'FS'+str(fs_target)+'_T'+ str(fk[1][0]) + '_X' + str(fk[1][1]) + '_F' + str(fk[2][0]) + '_K' +str(fk[2][1]) +'_V'+ str(fk[3])+ '_L'+str(fk[4]) + '_R' + str(fk[2][2]) + '_' + fdate + 'Z.png'
                         data_name = os.path.join(FKDir,fname)
                         imageio.imwrite(data_name,fk[0])
                     
@@ -432,13 +447,13 @@ def LPS_block(path_data,channels,verbose,config, fileIDs):
                         sampled_idx = random.sample(out_range_idx, min(true_n, len(out_range_idx)))
                         for i in sampled_idx:
                             fk = fks[i]
-                            fname = 'FS'+str(fs_target)+'_T'+ str(fk[1][0]) + '_X' + str(fk[1][1]) + '_F' + str(fk[2][0]) + '_K' +str(fk[2][1]) +'_V'+ str(fk[3])+ '_L'+str(fk[4]) + '_' + fdate + 'Z.png'
+                            fname = 'FS'+str(fs_target)+'_T'+ str(fk[1][0]) + '_X' + str(fk[1][1]) + '_F' + str(fk[2][0]) + '_K' +str(fk[2][1]) +'_V'+ str(fk[3])+ '_L'+str(fk[4]) + '_R' + str(fk[2][2]) + '_' + fdate + 'Z.png'
                             data_name = os.path.join(FKDir,fname)
                             imageio.imwrite(data_name,fk[0])
                     
                 case 'all':
                     for fk in fks:
-                        fname = 'FS'+str(fs_target)+'_T'+ str(fk[1][0]) + '_X' + str(fk[1][1]) + '_F' + str(fk[2][0]) + '_K' +str(fk[2][1]) +'_V'+ str(fk[3])+ '_L'+str(fk[4]) + '_' + fdate + 'Z.png'
+                        fname = 'FS'+str(fs_target)+'_T'+ str(fk[1][0]) + '_X' + str(fk[1][1]) + '_F' + str(fk[2][0]) + '_K' +str(fk[2][1]) +'_V'+ str(fk[3])+ '_L'+str(fk[4]) + '_R' + str(fk[2][2]) + '_' + fdate + 'Z.png'
                         data_name = os.path.join(FKDir,fname)
                         #print(fk[1].dtype)
                         imageio.imwrite(data_name,fk[0])
@@ -451,7 +466,7 @@ def LPS_block(path_data,channels,verbose,config, fileIDs):
 
                     for i in in_range_idx:
                         fk = fks[i]
-                        fname = 'FS'+str(fs_target)+'_T'+ str(fk[1][0]) + '_X' + str(fk[1][1]) + '_F' + str(fk[2][0]) + '_K' +str(fk[2][1]) +'_V'+ str(fk[3])+ '_L'+str(fk[4]) + '_' + fdate + 'Z.png'
+                        fname = 'FS'+str(fs_target)+'_T'+ str(fk[1][0]) + '_X' + str(fk[1][1]) + '_F' + str(fk[2][0]) + '_K' +str(fk[2][1]) +'_V'+ str(fk[3])+ '_L'+str(fk[4]) + '_R' + str(fk[2][2]) + '_' + fdate + 'Z.png'
                         data_name = os.path.join(FKDir,fname)
                         imageio.imwrite(data_name,fk[0])
                     
@@ -459,7 +474,7 @@ def LPS_block(path_data,channels,verbose,config, fileIDs):
                         sampled_idx = random.sample(out_range_idx, min(true_n, len(out_range_idx)))
                         for i in sampled_idx:
                             fk = fks[sampled_idx]
-                            fname = 'FS'+str(fs_target)+'_T'+ str(fk[1][0]) + '_X' + str(fk[1][1]) + '_F' + str(fk[2][0]) + '_K' +str(fk[2][1]) +'_V'+ str(fk[3])+ '_L'+str(fk[4]) + '_' + fdate + 'Z.png'
+                            fname = 'FS'+str(fs_target)+'_T'+ str(fk[1][0]) + '_X' + str(fk[1][1]) + '_F' + str(fk[2][0]) + '_K' +str(fk[2][1]) +'_V'+ str(fk[3])+ '_L'+str(fk[4]) + '_R' + str(fk[2][2]) + '_' + fdate + 'Z.png'
                             data_name = os.path.join(FKDir,fname)
                             imageio.imwrite(data_name,fk[0])
 
