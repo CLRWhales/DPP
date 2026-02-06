@@ -16,6 +16,7 @@ import imageio
 import configparser
 import gc
 import random
+import threading
 
 #handling lack of tk on some linux distros. shoddy, need to fix in the future
 try:
@@ -168,44 +169,56 @@ def LPS_block(path_data,channels,verbose,config, fileIDs):
     #load into list
     do_fk = config['FFTInfo'].getboolean('do_fk')
 
+    # nfiles = len(fileIDs)
+    # ntimes = config['Append'].getint('ntimes')
+    # n_rows = ntimes
+    # n_chans = len(channels)
+    
 
-    #total_rows = config['append'].getint('ntimes')*len(fileIDs)
-    #total_chans = len(channels)
     if do_fk:
         FKchans = channels
-        #c_end = int(config['Append']['c_end'])
         channels = None
-        #total_chans = config['append'].getint('total_chans')
+        # n_chans = config['Append'].getint('total_chans')
     
     
-    #output_data = np.nan((total_rows,total_chans),dtype = np.float32)
-
-
-    list_data, list_meta, _ = load_files(path_data = path_data,
+    # data = np.full((total_rows, total_chans), np.nan, dtype=np.float32)
+    # list_meta = []
+    data, list_meta, _ = load_files(path_data = path_data,
                                       channels = channels,
                                       verbose = verbose,
                                       fileIDs= fileIDs)
-    
-    raw_data =  np.concatenate(list_data, axis=0)
-    del(list_data)
+    data =  np.concatenate(data, axis=0)
     gc.collect()
+    
+    # data,list_meta = load_files_prealloc(path_data = path_data,
+    #                                      channels = channels,
+    #                                      verbose = verbose, 
+    #                                      fileIDs= fileIDs,
+    #                                      n_samp = ntimes,
+    #                                      n_chan = n_chans
+    #                                      )
 
-    data, list_meta = preprocess_DAS(raw_data,
+ 
+
+    date = list_meta[0]['header']['time']
+    fdate = datetime.datetime.fromtimestamp(int(date),tz = datetime.timezone.utc).strftime('%Y%m%dT%H%M%S')
+
+    # if np.isnan(data).any():
+    #     print('missing data at: ' + fdate)
+    #     return
+
+    data, list_meta = preprocess_DAS(data,
                                      list_meta,
                                      unwr = config['ProcessingInfo'].getboolean('unwr'),
                                      integrate=config['ProcessingInfo'].getboolean('integrate'))
-    del(raw_data)
-    gc.collect()
 
     if do_fk:
         c_start = int(config['Append']['c_start'])
         c_end = int(config['Append']['c_end'])
-        trimmed_view = data[:,c_start:c_end]
-        del data
+        data = data[:,c_start:c_end]
         q = int(config['ProcessingInfo']['synthetic_spacing'])
-        data = resample_poly(trimmed_view,up = 1, down = q, axis = 1)
+        data = resample_poly(data,up = 1, down = q, axis = 1)
         #data = decimate(data,q = q, axis = 1, ftype='iir', zero_phase=False)
-        del trimmed_view
         gc.collect()
         #print(data.dtype)
         #data = data[:,FKchans]
@@ -315,8 +328,6 @@ def LPS_block(path_data,channels,verbose,config, fileIDs):
 
 
     #saving info
-    date = list_meta[0]['header']['time']
-    fdate = datetime.datetime.fromtimestamp(int(date),tz = datetime.timezone.utc).strftime('%Y%m%dT%H%M%S')
     odir = config['Append']['outputdir']
 
     if fileIDs[0] == config['Append']['first']:
@@ -592,15 +603,23 @@ def DASProcessParalelle(config_path=None):
         print(channels) 
 
 
-    # with ProcessPoolExecutor(max_workers= n_workers) as executor:
-    #     executor.map(partial(LPS_block, path_data,channels,verbose, config), list_fids)
     
+    # with ProcessPoolExecutor(max_workers=n_workers) as executor:
+    #     futures = [executor.submit(partial(LPS_block, path_data,channels,verbose, config), lf)for lf in list_fids]
+    #     for future in as_completed(futures):
+    #         future.result()
+    delay = config['DataInfo'].getfloat('delay_seconds')
     with ProcessPoolExecutor(max_workers=n_workers) as executor:
-        futures = [executor.submit(partial(LPS_block, path_data,channels,verbose, config), lf)for lf in list_fids]
+        futures = []
+
+        for lf in list_fids:
+            futures.append(
+                executor.submit(partial(LPS_block, path_data, channels, verbose, config), lf)
+            )
+            time.sleep(delay)  # stagger HERE
+
         for future in as_completed(futures):
             future.result()
-        
-
     
 def main():
     ini_list = find_INI()

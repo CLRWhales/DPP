@@ -8,7 +8,7 @@ import os
 from numpy.lib.stride_tricks import as_strided
 import scipy.ndimage as NDI
 from scipy.stats import entropy
-
+import gc
 
 def faststack(X,n, wind = 1):
      """ fast adjacent channel stack through time
@@ -234,6 +234,58 @@ def KL_div(imglist):
     ents = [np.round(entropy(fk,total),6)for fk in hists]
     return ents
 
+def approximate_percentiles(
+    arrays,
+    percentiles,
+    bins=10_000,
+):
+    """
+    Approximate percentiles over a list of NumPy arrays using a streaming histogram.
+
+    Parameters
+    ----------
+    arrays : sequence of np.ndarray
+        Input arrays (any shape).
+    percentiles : float or sequence of float
+        Percentiles to compute, in [0, 100].
+    bins : int, default 10_000
+        Number of histogram bins.
+
+    Returns
+    -------
+    values : np.ndarray
+        Approximate percentile values, same order as `percentiles`.
+    """
+    
+    percentiles = np.atleast_1d(percentiles).astype(float)
+
+    if np.any(percentiles < 0) or np.any(percentiles > 100):
+        raise ValueError("percentiles must be between 0 and 100")
+
+    global_min = min(np.min(a) for a in arrays)
+    global_max = max(np.max(a) for a in arrays)
+
+    if global_min == global_max:
+        return np.full_like(percentiles, global_min, dtype=float)
+
+    hist = np.zeros(bins, dtype=np.int64)
+
+    for a in arrays:
+        h, _ = np.histogram(a, bins=bins, range=(global_min, global_max))
+        hist += h
+
+    cdf = np.cumsum(hist)
+    total = cdf[-1]
+
+    thresholds = percentiles / 100.0 * total
+    bin_indices = np.searchsorted(cdf, thresholds, side="left")
+
+    bin_edges = np.linspace(global_min, global_max, bins + 1)
+    values = bin_edges[np.clip(bin_indices, 0, bins)]
+
+    return values
+
+
 
 def sliding_window_FK(arr, window_shape, dx, dt,fcut,overlap = 2,rescale = False, fold = True):
     step_y, step_x = window_shape[0] // overlap, window_shape[1] // overlap
@@ -302,12 +354,14 @@ def sliding_window_FK(arr, window_shape, dx, dt,fcut,overlap = 2,rescale = False
         #mintermediate = np.mean(intermediate)
         # stdintermediate = np.std(intermediate)
         results.extend((intermediate-mean_img)/stdev)
-
+    del windows
+    gc.collect()
     if rescale:
+        low,high = approximate_percentiles(results,[75,99])
         #vals = np.stack(results,axis=0)[:,128:,:]
         #vals[vals<0] = 0
         #print(vals.shape)
-        low,high = np.percentile(results,[75,99]) #file wise
+        #low,high = np.percentile(results,[75,99]) #file wise
         #high = np.ceil(np.percentile(vals,99)) #filewise
         low = np.floor(low)
         high = np.ceil(high)
@@ -318,8 +372,8 @@ def sliding_window_FK(arr, window_shape, dx, dt,fcut,overlap = 2,rescale = False
     if fold:
         results = [foldFK(r,ks) for r in results] #this folds the fk so pos and neg ks are in separate image channels
     
-    outputs = [(k[0],k[1],k[2],k[3],k[4]) for k in zip(results,pos,maxs,vels,Ls)]
-
+    # outputs = [(k[0],k[1],k[2],k[3],k[4]) for k in zip(results,pos,maxs,vels,Ls)]
+    outputs = list(zip(results,pos,maxs,vels,Ls))
     return outputs
 
 

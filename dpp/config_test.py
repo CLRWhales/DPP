@@ -4,8 +4,8 @@ import configparser
 config = configparser.ConfigParser()
 config['DataInfo'] = {'Directory':'your/directory/here', #directory to where the data lives
                       'n_files' : '6', #how many files do you want concatenated and processed per batch
-                      'n_workers': '4' #how many batches do you want to do simultaneously, note if too high, can overload available memory
-                      }
+                      'n_workers': '4', #how many batches do you want to do simultaneously, note if too high, can overload available memory
+                      'delay_seconds':'5'}
 config['ProcessingInfo'] = {'n_synthetic':'auto', # number of synthetic receiver positions to be used along the fiber, auto means fill it up acording to synthetic spacing, meters means auto, but spacing is in units of meters and auto fills the full extent of the fiber.
                             'synthetic_spacing':'250', #number of channels between the start of each synthetic receiver
                             'c_start':'0', #where to start the channel idx along the fiber? idx or meters as described above
