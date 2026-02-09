@@ -342,7 +342,7 @@ def sliding_window_FK(arr, window_shape, dx, dt,fcut,overlap = 2,rescale = False
             mtmp = np.mean(tmp)
             tmp[:tfreq,:] = np.mean(tmp)
             peak_lock = np.unravel_index(np.argmax(tmp), tmp.shape)
-            max_ratio = (np.max(tmp)-mtmp)/stmp
+            max_ratio = np.round((np.max(tmp)-mtmp)/stmp,3)
             fmax=peak_lock[0]
             kmax = np.round(np.abs(peak_lock[1]-window_shape[1]/2))
             L = int((peak_lock[1]-window_shape[1]/2)<0)

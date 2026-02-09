@@ -16,8 +16,7 @@ import imageio
 import configparser
 import gc
 import random
-import threading
-
+import multiprocessing as mp
 #handling lack of tk on some linux distros. shoddy, need to fix in the future
 try:
     import tkinter as tk
@@ -27,6 +26,8 @@ else:
     available = True
     from tkinter import filedialog
 
+
+_initialized = False
 
 def find_INI():
     """
@@ -99,20 +100,29 @@ def load_file(channels, verbose, filepath):
     return data, meta
 
 
-def load_files(path_data, channels, verbose, fileIDs):
+def load_files(path_data, channels, verbose, fileIDs,nrows,ncols):
     """
     distribute multiple file loading over threads -> from kevinG
     """
     # create a thread pool
-    with ThreadPoolExecutor(len(fileIDs)) as exe:
+    nfiles = len(fileIDs)
+    #total_rows = nrows*nfiles
+    #print((total_rows,ncols))
+    #data = np.full((total_rows,ncols),np.nan,dtype = np.float32)
+    list_meta =[]
+    list_data = []
+
+    with ThreadPoolExecutor(nfiles) as exe:
         
         file_paths = [os.path.join(path_data, str(fid) + '.hdf5') for fid in fileIDs]
-        # load files
         results = exe.map(partial(load_file,channels, verbose), file_paths)
-        # collect data
-        list_data=[]; list_meta=[];
-        for listx in results: 
-            list_data.append(listx[0]); list_meta.append(listx[1])
+        for i,listx in enumerate(results):
+            #start = i*listx[0].shape[0]
+            #stop = start+listx[0].shape[0]
+            #print(listx[0].shape)
+            #data[start:stop,:] = listx[0]
+            list_meta.append(listx[1])
+            list_data.append(listx[0])
 
         return list_data,list_meta, fileIDs
 
@@ -162,41 +172,46 @@ def preprocess_DAS(data, list_meta, unwr=False, integrate=True, useSensitivity=T
     return (data, list_meta)
 
 
-def LPS_block(path_data,channels,verbose,config, fileIDs):
+def LPS_block(path_data,channels,verbose,config,start_sem,fileIDs):
     """
     Load, Process, and Save, a single block of das data files for further analysis and visualization 
     """
+    global _initialized
+    if not _initialized:
+        start_sem.acquire()
+        _initialized = True
+        print(f"Worker {os.getpid()} activated")
+
+
+
     #load into list
     do_fk = config['FFTInfo'].getboolean('do_fk')
-
-    # nfiles = len(fileIDs)
-    # ntimes = config['Append'].getint('ntimes')
-    # n_rows = ntimes
-    # n_chans = len(channels)
+    
+    nfiles = len(fileIDs)
+    ntimes = config['Append'].getint('ntimes')
+    n_chans = len(channels)
+    
     
 
     if do_fk:
         FKchans = channels
         channels = None
-        # n_chans = config['Append'].getint('total_chans')
+        n_chans = config['Append'].getint('total_chans')
     
-    
-    # data = np.full((total_rows, total_chans), np.nan, dtype=np.float32)
-    # list_meta = []
+    #data = np.full((n_rows,n_chans),np.nan,dtype=np.float32)
+    #print(n_chans)
     data, list_meta, _ = load_files(path_data = path_data,
-                                      channels = channels,
-                                      verbose = verbose,
-                                      fileIDs= fileIDs)
+                                    channels = channels,
+                                    verbose = verbose,
+                                    fileIDs= fileIDs,
+                                    nrows = ntimes,
+                                    ncols = n_chans)
+
+ 
+
     data =  np.concatenate(data, axis=0)
     gc.collect()
     
-    # data,list_meta = load_files_prealloc(path_data = path_data,
-    #                                      channels = channels,
-    #                                      verbose = verbose, 
-    #                                      fileIDs= fileIDs,
-    #                                      n_samp = ntimes,
-    #                                      n_chan = n_chans
-    #                                      )
 
  
 
@@ -594,7 +609,7 @@ def DASProcessParalelle(config_path=None):
                         'c_start':c_start,
                         'c_end':c_end,
                         'ntimes':dshape[0],
-                        'total_chans':dshape[0]}
+                        'total_chans':dshape[1]}
     
 
     if verbose:
@@ -609,14 +624,20 @@ def DASProcessParalelle(config_path=None):
     #     for future in as_completed(futures):
     #         future.result()
     delay = config['DataInfo'].getfloat('delay_seconds')
+    manager = mp.Manager()
+    start_sem = manager.Semaphore(0)
+ 
     with ProcessPoolExecutor(max_workers=n_workers) as executor:
         futures = []
 
         for lf in list_fids:
             futures.append(
-                executor.submit(partial(LPS_block, path_data, channels, verbose, config), lf)
+                executor.submit(partial(LPS_block, path_data, channels, verbose, config,start_sem), lf)
             )
-            time.sleep(delay)  # stagger HERE
+        
+        for _ in range(n_workers):
+            time.sleep(delay)
+            start_sem.release()
 
         for future in as_completed(futures):
             future.result()
