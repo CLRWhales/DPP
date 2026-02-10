@@ -5,7 +5,8 @@ config = configparser.ConfigParser()
 config['DataInfo'] = {'Directory':'your/directory/here', #directory to where the data lives
                       'n_files' : '6', #how many files do you want concatenated and processed per batch
                       'n_workers': '4', #how many batches do you want to do simultaneously, note if too high, can overload available memory
-                      'delay_seconds':'5'}
+                      'auto_optimize':'true' #auto pick the number of workers. will take the minimum between n_workers and here
+                      }
 config['ProcessingInfo'] = {'n_synthetic':'auto', # number of synthetic receiver positions to be used along the fiber, auto means fill it up acording to synthetic spacing, meters means auto, but spacing is in units of meters and auto fills the full extent of the fiber.
                             'synthetic_spacing':'250', #number of channels between the start of each synthetic receiver
                             'c_start':'0', #where to start the channel idx along the fiber? idx or meters as described above
@@ -45,8 +46,8 @@ config['FKInfo'] = {'nfft_time':'512', #parameters in units of samples for the f
                     'fold':'true', #do you want to fold your Fks over around the 0 wavenumber
                     'vmin':'1470', #dod oyu want to velocity filter your saved fks? set to -1 for no minimum vel
                     'vmax':'3500', #do you want to velocity filter your saved fks? set to -1 for no max vel
-                    'fmin':'0', #do you want to fre filter your saved FKS? set to -1 for no min frequency 
-                    'fmax':'80', #do you want to fre filter your saved FKS? set to -1 for no max frequency 
+                    'fmin':'0', #do you want to freq filter your saved FKS? set to -1 for no min frequency 
+                    'fmax':'80', #do you want to freq filter your saved FKS? set to -1 for no max frequency 
                     'thresh': '5',
                     'sample_method':'none', #do you want to sample other non signals? none for no, same for a random selection of the same number, in files with no water band, randomly pull n images for more diverse training material
                     'n':'50'

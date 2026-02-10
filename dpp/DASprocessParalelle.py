@@ -17,6 +17,8 @@ import configparser
 import gc
 import random
 import multiprocessing as mp
+import psutil
+from memory_profiler import memory_usage
 #handling lack of tk on some linux distros. shoddy, need to fix in the future
 try:
     import tkinter as tk
@@ -27,7 +29,15 @@ else:
     from tkinter import filedialog
 
 
-_initialized = False
+def measure_peak_and_return(func, *args, **kwargs):
+    mem_usage, result = memory_usage(
+        (func, args, kwargs),
+        interval=0.01,
+        retval=True,       # this is the key
+    )
+    # peak_mb = max(mem_usage)
+    # timeofmax = np.argmax(mem_usage)*0.01
+    return mem_usage,result
 
 def find_INI():
     """
@@ -126,8 +136,6 @@ def load_files(path_data, channels, verbose, fileIDs,nrows,ncols):
 
         return list_data,list_meta, fileIDs
 
-
-
 def preprocess_DAS(data, list_meta, unwr=False, integrate=True, useSensitivity=True, spikeThr=None): 
     """
     preprocess loaded DAS data, for details see SimpleDASreader4  -> from kevinG
@@ -176,18 +184,18 @@ def LPS_block(path_data,channels,verbose,config,start_sem,fileIDs):
     """
     Load, Process, and Save, a single block of das data files for further analysis and visualization 
     """
-    global _initialized
-    if not _initialized:
-        start_sem.acquire()
-        _initialized = True
-        print(f"Worker {os.getpid()} activated")
+    # global _initialized
+    # if not _initialized:
+    #     start_sem.acquire()
+    #     _initialized = True
+    #     print(f"Worker {os.getpid()} activated")
 
 
-
+    start = time.perf_counter()
     #load into list
     do_fk = config['FFTInfo'].getboolean('do_fk')
     
-    nfiles = len(fileIDs)
+    #nfiles = len(fileIDs)
     ntimes = config['Append'].getint('ntimes')
     n_chans = len(channels)
     
@@ -200,17 +208,20 @@ def LPS_block(path_data,channels,verbose,config,start_sem,fileIDs):
     
     #data = np.full((n_rows,n_chans),np.nan,dtype=np.float32)
     #print(n_chans)
-    data, list_meta, _ = load_files(path_data = path_data,
-                                    channels = channels,
-                                    verbose = verbose,
-                                    fileIDs= fileIDs,
-                                    nrows = ntimes,
-                                    ncols = n_chans)
+    with start_sem:
+        data, list_meta, _ = load_files(path_data = path_data,
+                                        channels = channels,
+                                        verbose = verbose,
+                                        fileIDs= fileIDs,
+                                        nrows = ntimes,
+                                        ncols = n_chans)
+        data = np.concat(data, axis = 0)
+        gc.collect()
 
- 
+    end_downloads = time.perf_counter()
 
-    data =  np.concatenate(data, axis=0)
-    gc.collect()
+    # #data =  np.concatenate(data, axis=0)
+    # gc.collect()
     
 
  
@@ -508,6 +519,12 @@ def LPS_block(path_data,channels,verbose,config,start_sem,fileIDs):
 
         case _:
             raise TypeError('input must be either "magnitude", "complex","cleaning","LTSA","Entropy", or doFk must be set to true')
+    
+    end = time.perf_counter()
+    download_dur = end_downloads - start
+    processing_dur = end - end_downloads
+
+    return download_dur,processing_dur
         
 
 def DASProcessParalelle(config_path=None):
@@ -612,10 +629,7 @@ def DASProcessParalelle(config_path=None):
                         'total_chans':dshape[1]}
     
 
-    if verbose:
-        print(path_data)
-        print(outputdir)
-        print(channels) 
+
 
 
     
@@ -623,10 +637,56 @@ def DASProcessParalelle(config_path=None):
     #     futures = [executor.submit(partial(LPS_block, path_data,channels,verbose, config), lf)for lf in list_fids]
     #     for future in as_completed(futures):
     #         future.result()
-    delay = config['DataInfo'].getfloat('delay_seconds')
+    auto_optimize = config['DataInfo'].getboolean('auto_optimize')
     manager = mp.Manager()
-    start_sem = manager.Semaphore(0)
- 
+    start_sem = manager.Semaphore(1)
+
+    if auto_optimize:
+        available_ram = psutil.virtual_memory().available / 1024 / 1024
+        file_ids = list_fids.pop(0)
+
+        memory_usage,timeing_info = measure_peak_and_return(LPS_block,path_data,channels, verbose,config,start_sem,file_ids)
+        memtiming = np.cumsum(np.full_like(memory_usage,0.01))
+        download_dur, processing_dur = timeing_info#LPS_block(path_data,channels,verbose,config,start_sem,file_ids)
+        total = download_dur + processing_dur
+
+        if download_dur > processing_dur:
+            n_workers = 2
+            print('Network limited')
+        
+        if processing_dur > download_dur:
+            Tratio = np.floor(total/download_dur)
+            # Ensure your arrays are numpy arrays of a proper numeric type
+            memtiming = np.array(memtiming, dtype=float)
+            memory_usage = np.array(memory_usage, dtype=float)
+
+            # Get integer indices explicitly using np.nonzero
+            load_indices = np.nonzero(memtiming <= download_dur)[0]
+            process_indices = np.nonzero(memtiming > download_dur)[0]
+
+            # Use the indices to index memory_usage
+            load_max = np.max(memory_usage[load_indices])
+            process_max = np.max(memory_usage[process_indices])
+
+            if load_max > process_max:
+                diff = load_max - process_max
+                m_ratio = np.floor((0.95*available_ram-diff)/process_max)
+                print('RAM load limited')
+            else:
+                m_ratio = np.floor((0.95*available_ram)/process_max)
+                print('RAM process limited')
+
+            constraint = int(np.min([Tratio,m_ratio]))
+
+            n_workers = int(np.min([n_workers,constraint]))
+
+    n_workers = int(n_workers)
+    if verbose:
+        print(path_data)
+        print(outputdir)
+        print(channels) 
+    print('using ' + str(n_workers)+ ' workers')
+
     with ProcessPoolExecutor(max_workers=n_workers) as executor:
         futures = []
 
@@ -635,9 +695,9 @@ def DASProcessParalelle(config_path=None):
                 executor.submit(partial(LPS_block, path_data, channels, verbose, config,start_sem), lf)
             )
         
-        for _ in range(n_workers):
-            time.sleep(delay)
-            start_sem.release()
+        # for _ in range(n_workers):
+        #     time.sleep(delay)
+        #     start_sem.release()
 
         for future in as_completed(futures):
             future.result()
