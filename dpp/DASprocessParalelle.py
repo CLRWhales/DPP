@@ -655,7 +655,7 @@ def DASProcessParalelle(config_path=None):
             print('Network limited')
         
         if processing_dur > download_dur:
-            Tratio = np.floor(total/download_dur)
+            Tratio = np.ceil(total/download_dur)+1
             # Ensure your arrays are numpy arrays of a proper numeric type
             memtiming = np.array(memtiming, dtype=float)
             memory_usage = np.array(memory_usage, dtype=float)
