@@ -297,7 +297,8 @@ def load_DAS_file(filename, chIndex=None, roiIndex=None, samples=None,
     
     unit=meta['header']['unit'] 
     if integrate:
-        signal=np.cumsum(signal,axis=0)*meta['header']['dt']
+        np.cumsum(signal,axis=0,out = signal)
+        signal*=meta['header']['dt']
         unit=combine_units([unit, unit.split('/')[-1]]) 
        
     if useSensitivity:

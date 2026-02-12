@@ -277,7 +277,7 @@ def LPS_block(path_data,channels,verbose,config,start_sem,fileIDs):
     # sos1 = butter(N = 6,Wn = fs_target/2, btype='low', fs = 1/dt, output= 'sos')
     # data = sosfiltfilt(sos1,data,axis = 0)
     data = resample(data,num ,axis = 0);
-    data=detrend(data, axis=0, type='linear');
+    data=detrend(data, axis=0, type='linear',overwrite_data=True);
     dt_new = 1/fs_target
 
     #filtering
@@ -639,10 +639,12 @@ def DASProcessParalelle(config_path=None):
     #         future.result()
     auto_optimize = config['DataInfo'].getboolean('auto_optimize')
     manager = mp.Manager()
-    start_sem = manager.Semaphore(1)
+    n_sem = 1
+    start_sem = manager.Semaphore(n_sem)
 
     if auto_optimize:
         available_ram = psutil.virtual_memory().available / 1024 / 1024
+        print('available ram: ' + str(available_ram) + ' MB')
         file_ids = list_fids.pop(0)
 
         memory_usage,timeing_info = measure_peak_and_return(LPS_block,path_data,channels, verbose,config,start_sem,file_ids)
@@ -655,7 +657,8 @@ def DASProcessParalelle(config_path=None):
             print('Network limited')
         
         if processing_dur > download_dur:
-            Tratio = np.ceil(total/download_dur)+1
+            t_ratio = np.ceil(total/download_dur)+1
+            print(t_ratio)
             # Ensure your arrays are numpy arrays of a proper numeric type
             memtiming = np.array(memtiming, dtype=float)
             memory_usage = np.array(memory_usage, dtype=float)
@@ -667,18 +670,24 @@ def DASProcessParalelle(config_path=None):
             # Use the indices to index memory_usage
             load_max = np.max(memory_usage[load_indices])
             process_max = np.max(memory_usage[process_indices])
+            print('RAM load Usage: ' + str(load_max) + ' MB')
+            print('RAM process Usage: ' + str(process_max) + ' MB')
 
             if load_max > process_max:
-                diff = load_max - process_max
+                diff = load_max - process_max 
                 m_ratio = np.floor((0.95*available_ram-diff)/process_max)
                 print('RAM load limited')
-            else:
+
+            if process_max > load_max:
                 m_ratio = np.floor((0.95*available_ram)/process_max)
+                print(m_ratio)
                 print('RAM process limited')
+                
 
-            constraint = int(np.min([Tratio,m_ratio]))
-
-            n_workers = int(np.min([n_workers,constraint]))
+            nparalelle = int(np.floor(m_ratio/t_ratio))
+            print(nparalelle)
+            n_sem = int(np.max([nparalelle,1]))
+            n_workers = int(np.min([n_workers,m_ratio]))
 
     n_workers = int(n_workers)
     if verbose:
@@ -686,7 +695,7 @@ def DASProcessParalelle(config_path=None):
         print(outputdir)
         print(channels) 
     print('using ' + str(n_workers)+ ' workers')
-
+    start_sem = manager.Semaphore(n_sem)
     with ProcessPoolExecutor(max_workers=n_workers) as executor:
         futures = []
 
