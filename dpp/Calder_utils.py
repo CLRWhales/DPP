@@ -9,6 +9,7 @@ from numpy.lib.stride_tricks import as_strided
 import scipy.ndimage as NDI
 from scipy.stats import entropy
 import gc
+from numba import njit, prange
 
 def faststack(X,n, wind = 1):
      """ fast adjacent channel stack through time
@@ -377,3 +378,52 @@ def sliding_window_FK(arr, window_shape, dx, dt,fcut,overlap = 2,rescale = False
     return outputs
 
 
+@njit(parallel=True)
+def unwrap_numba_parallel(phi, wrapStep):
+    """
+    In-place, multi-threaded phase unwrapping along spatial dimension.
+
+    Parameters
+    ----------
+    phi : float32 2D array
+        Input array to unwrap (will be modified in-place).
+    wrapStep : float
+        Wrap interval (discontinuity threshold = wrapStep/2)
+    """
+    ws = phi.dtype.type(wrapStep)
+    rows, cols = phi.shape
+    half_wrap = ws / 2.0
+
+    # Parallel loop over rows
+    for i in prange(rows):
+        row = phi[i, :]
+        correction = phi.dtype.type(0.0)
+        prev = row[0]
+
+        for j in range(1, cols):
+            diff = row[j] - prev
+            if diff > half_wrap:
+                correction -= ws
+            elif diff < -half_wrap:
+                correction += ws
+
+            row[j] += correction
+            prev = row[j]
+
+    return phi
+
+@njit(parallel=True)
+def cumsum_time_numba(arr):
+    """
+    In-place, multi-threaded cumsum along time dimension.
+
+    Parameters
+    ----------
+    arr : float32 2D array
+        Input array to integrate (will be modified in-place).
+    """
+    rows, cols = arr.shape
+    for j in prange(cols):       # parallel across columns
+        for i in range(1, rows):
+            arr[i, j] += arr[i-1, j]
+    return arr

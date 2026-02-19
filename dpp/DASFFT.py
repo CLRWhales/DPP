@@ -86,7 +86,7 @@ def sneakyfft(X,N_samp,N_overlap,N_fft, window,fs):
     reshaped = reshape_array_with_overlap(X,N_samp,N_overlap)
     reshaped = reshaped * window[:,None]
     fft_out = np.fft.rfft(reshaped, n = N_fft, axis =0)
-   
+    
     nt_slices = fft_out.shape[1]//X.shape[1]
     spec = fft_out.reshape(fft_out.shape[0],nt_slices,X.shape[1])
     #f = fs/N_FFT*np.arange(fs+1)

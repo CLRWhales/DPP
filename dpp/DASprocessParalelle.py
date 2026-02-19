@@ -348,6 +348,8 @@ def LPS_block(path_data,channels,verbose,config,start_sem,fileIDs):
             
         window = np.hanning(N_samp)
         spec, freqs, times = sneakyfft(data,N_samp,N_overlap,N_fft, window,fs_target)
+        U = np.sum(window**2) / N_samp        # mean square of window
+        scale = (N_samp**2) * U
         savetype = config['SaveInfo']['data_type']
         del data
         gc.collect()
@@ -384,7 +386,14 @@ def LPS_block(path_data,channels,verbose,config,start_sem,fileIDs):
             magdir = os.path.join(odir , 'Magnitude')
             #Path(magdir).mkdir()
             os.makedirs(magdir, exist_ok=True)
-            np.abs(spec,out = spec)
+            spec = abs(spec)**2
+            spec /=scale
+            
+            if N_fft % 2 == 0:
+                spec[1:-1] *= 2
+            else:
+                spec[1:] *= 2
+            
             np.log10(spec,out=spec)
             spec*=10
             #spec = 10*np.log10(abs(spec))
@@ -405,12 +414,21 @@ def LPS_block(path_data,channels,verbose,config,start_sem,fileIDs):
         case 'cleaning':
             #these thresholds are based on Robins values.
             mfreq = np.max(freqs)
-            cuts = [0.5,5,30,130,mfreq+1] 
+            cuts = [0.5,5,30,130,mfreq+1]
+            spec = abs(spec)**2
+            spec /=scale
+            
+            if N_fft % 2 == 0:
+                spec[1:-1] *= 2
+            else:
+                spec[1:] *= 2
+
+
             for (l,h) in zip(cuts[:-1],cuts[1:]):
                 if l > mfreq:
                     break
                 f_idx = np.where(np.logical_and(freqs >= l,freqs <= h))
-                TX = 10*np.log10(np.mean(abs(spec[f_idx[0],:,:]),axis = 0))
+                TX = 10*np.log10(np.sum(spec[f_idx[0],:,:],axis = 0))
                 cleandir = os.path.join(odir , str(l) + 'Hz_' + str(h) + 'Hz')
                 #Path(cleandir).mkdir(exist_ok=True)
                 os.makedirs(cleandir, exist_ok= True)
@@ -628,23 +646,21 @@ def DASProcessParalelle(config_path=None):
                         'ntimes':dshape[0],
                         'total_chans':dshape[1]}
     
+    if verbose:
+        print(path_data)
+        print(outputdir)
+        print(channels) 
 
-
-
-
-    
-    # with ProcessPoolExecutor(max_workers=n_workers) as executor:
-    #     futures = [executor.submit(partial(LPS_block, path_data,channels,verbose, config), lf)for lf in list_fids]
-    #     for future in as_completed(futures):
-    #         future.result()
     auto_optimize = config['DataInfo'].getboolean('auto_optimize')
     manager = mp.Manager()
     n_sem = 1
     start_sem = manager.Semaphore(n_sem)
 
     if auto_optimize:
-        available_ram = psutil.virtual_memory().available / 1024 / 1024
+        available_ram = psutil.virtual_memory().available / 1024 / 1024 * 0.95
+        ncores = psutil.cpu_count(logical = False)-1
         print('available ram: ' + str(available_ram) + ' MB')
+        print('available cores: ' + str(ncores))
         file_ids = list_fids.pop(0)
 
         memory_usage,timeing_info = measure_peak_and_return(LPS_block,path_data,channels, verbose,config,start_sem,file_ids)
@@ -652,50 +668,71 @@ def DASProcessParalelle(config_path=None):
         download_dur, processing_dur = timeing_info#LPS_block(path_data,channels,verbose,config,start_sem,file_ids)
         total = download_dur + processing_dur
 
+        memtiming = np.array(memtiming, dtype=float)
+        memory_usage = np.array(memory_usage, dtype=float)
+
+        # Get integer indices explicitly using np.nonzero
+        load_indices = np.nonzero(memtiming <= download_dur)[0]
+        process_indices = np.nonzero(memtiming > download_dur)[0]
+
+        # Use the indices to index memory_usage
+        load_max = np.max(memory_usage[load_indices])
+        process_max = np.max(memory_usage[process_indices])
+
+
+        load_T_ratio = np.ceil(total/download_dur)
+        print(load_T_ratio)
+        nparalelle = 1
+        #process_T_ratio = total/processing_dur
+
+        print('RAM load Usage: ' + str(load_max) + ' MB')
+        print('RAM process Usage: ' + str(process_max) + ' MB')
+        print('Time load Usage: ' + str(download_dur) + ' s')
+        print('Time process Usage: ' + str(processing_dur) + ' s')
+        print('Time total Usage: ' + str(total) + ' s')
+
         if download_dur > processing_dur:
-            n_workers = 2
-            print('Network limited')
+            #pulling over network so limit threads to reduce overhead
+            totalthreads = 12
+            nthreads = n_files
+            n_paralelle = int(min(np.floor(totalthreads/nthreads),1))
+            m_ratio = np.floor(available_ram/max(load_max,process_max))
+            n_sem = n_paralelle + 1
+            n_workers = int(min(m_ratio,n_workers,ncores))
+            print('Load time limited')
         
         if processing_dur > download_dur:
-            t_ratio = np.ceil(total/download_dur)+1
-            print(t_ratio)
-            # Ensure your arrays are numpy arrays of a proper numeric type
-            memtiming = np.array(memtiming, dtype=float)
-            memory_usage = np.array(memory_usage, dtype=float)
-
-            # Get integer indices explicitly using np.nonzero
-            load_indices = np.nonzero(memtiming <= download_dur)[0]
-            process_indices = np.nonzero(memtiming > download_dur)[0]
-
-            # Use the indices to index memory_usage
-            load_max = np.max(memory_usage[load_indices])
-            process_max = np.max(memory_usage[process_indices])
-            print('RAM load Usage: ' + str(load_max) + ' MB')
-            print('RAM process Usage: ' + str(process_max) + ' MB')
-
             if load_max > process_max:
                 diff = load_max - process_max 
-                m_ratio = np.floor((0.95*available_ram-diff)/process_max)
+                m_ratio = np.floor((available_ram-diff)/process_max)
+                test = min(np.floor(m_ratio/load_T_ratio),4)
+                worstcase = test*load_max + ((m_ratio-test)*process_max)
+                while (worstcase > available_ram):
+                    if test == 1:
+                        break
+                    test = test-1
+                    worstcase = test*load_max + ((m_ratio-test)*process_max)
+                nparalelle = int(test)
+                print(m_ratio)
+                print(nparalelle)
                 print('RAM load limited')
 
             if process_max > load_max:
-                m_ratio = np.floor((0.95*available_ram)/process_max)
+                m_ratio = np.floor((available_ram)/process_max)
                 print(m_ratio)
+                nparalelle = int(np.floor(m_ratio/load_T_ratio))
                 print('RAM process limited')
-                
 
-            nparalelle = int(np.floor(m_ratio/t_ratio))
-            print(nparalelle)
-            n_sem = int(np.max([nparalelle,1]))
-            n_workers = int(np.min([n_workers,m_ratio]))
+            n_sem = int(max(nparalelle,1))
+            n_workers = int(min(n_workers,m_ratio,ncores))
 
     n_workers = int(n_workers)
-    if verbose:
-        print(path_data)
-        print(outputdir)
-        print(channels) 
+    n_sem = int(n_sem)
     print('using ' + str(n_workers)+ ' workers')
+    print('usind ' + str(n_sem) + ' semaphores')
+
     start_sem = manager.Semaphore(n_sem)
+    
     with ProcessPoolExecutor(max_workers=n_workers) as executor:
         futures = []
 
