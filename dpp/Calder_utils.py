@@ -410,20 +410,20 @@ def unwrap_numba_parallel(phi, wrapStep):
             row[j] += correction
             prev = row[j]
 
-    return phi
+    #return phi
 
 @njit(parallel=True)
-def cumsum_time_numba(arr):
+def cumsum_time_numba(phi):
     """
     In-place, multi-threaded cumsum along time dimension.
 
     Parameters
     ----------
-    arr : float32 2D array
+    phi : float32 2D array
         Input array to integrate (will be modified in-place).
     """
-    rows, cols = arr.shape
+    rows, cols = phi.shape
     for j in prange(cols):       # parallel across columns
         for i in range(1, rows):
-            arr[i, j] += arr[i-1, j]
-    return arr
+            phi[i, j] += phi[i-1, j]
+    #return phi

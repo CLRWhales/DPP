@@ -107,6 +107,14 @@ def load_file(channels, verbose, filepath):
     data, meta = load_DAS_file(filepath, chIndex=channels, roiIndex=None, samples=None,
                       integrate=False, unwr=False, metaDetail=1, useSensitivity=False,
                       spikeThr=None)
+    # meta = Calder_utils.load_meta(filename = filepath)
+    
+    # if channels == None:
+    #     with h5py.File(filepath,'r') as f:
+    #         data = f['data'][:]* np.float32(meta['header']['dataScale'])
+    # else:
+    #     with h5py.File(filepath,'r') as f:
+    #         data = f['data'][:,channels]* np.float32(meta['header']['dataScale'])
     return data, meta
 
 
@@ -156,7 +164,8 @@ def preprocess_DAS(data, list_meta, unwr=False, integrate=True, useSensitivity=T
         data[np.abs(data)>spikeThr] = 0
 
     if integrate:
-        np.cumsum(data,axis=0,out = data)*meta['header']['dt']
+        np.cumsum(data,axis=0,out = data)
+        data*=meta['header']['dt']
         unit=combine_units([unit, unit.split('/')[-1]])
         #print(f"DEBUG: unit={unit}")
 
@@ -705,8 +714,11 @@ def DASProcessParalelle(config_path=None):
             if load_max > process_max:
                 diff = load_max - process_max 
                 m_ratio = np.floor((available_ram-diff)/process_max)
+                print(m_ratio,load_T_ratio)
                 test = min(np.floor(m_ratio/load_T_ratio),4)
+                print(test)
                 worstcase = test*load_max + ((m_ratio-test)*process_max)
+                print(worstcase)
                 while (worstcase > available_ram):
                     if test == 1:
                         break
@@ -762,6 +774,7 @@ def main():
         try:
             print(f"\n--- Start of {ini_file} ---")
             t_sub_start = time.perf_counter()
+            print(f"started at: {datetime.datetime.now()}")
             DASProcessParalelle(config_path=ini_file)
             t_sub_end = time.perf_counter()
             print(f"--- End of {ini_file}, Duration: {t_sub_end - t_sub_start:.2f}s ---")
