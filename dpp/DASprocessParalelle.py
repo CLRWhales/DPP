@@ -155,7 +155,8 @@ def preprocess_DAS(data, list_meta, unwr=False, integrate=True, useSensitivity=T
             raise ValueError('Options unwr, spikeThr or integrate can only be\
                              used with time differentiated phase data')
     if unwr and meta['header']['spatialUnwrRange']:
-        data=unwrap(data,meta['header']['spatialUnwrRange'],axis=1)
+        #data=unwrap(data,meta['header']['spatialUnwrRange'],axis=1)
+        Calder_utils.unwrap_numba_parallel(data,meta['header']['spatialUnwrRange'])
         gc.collect()
 
     unit=meta['appended']['unit']
@@ -164,7 +165,8 @@ def preprocess_DAS(data, list_meta, unwr=False, integrate=True, useSensitivity=T
         data[np.abs(data)>spikeThr] = 0
 
     if integrate:
-        np.cumsum(data,axis=0,out = data)
+        #np.cumsum(data,axis=0,out = data)
+        Calder_utils.cumsum_time_numba(data)
         data*=meta['header']['dt']
         unit=combine_units([unit, unit.split('/')[-1]])
         #print(f"DEBUG: unit={unit}")
