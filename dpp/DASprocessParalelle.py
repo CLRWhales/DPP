@@ -19,6 +19,7 @@ import random
 import multiprocessing as mp
 import psutil
 from memory_profiler import memory_usage
+import traceback
 #handling lack of tk on some linux distros. shoddy, need to fix in the future
 try:
     import tkinter as tk
@@ -105,8 +106,8 @@ def load_file(channels, verbose, filepath):
     if verbose: 
         fid = os.path.basename(filepath);  print(f"/nloading file {fid}")
     data, meta = load_DAS_file(filepath, chIndex=channels, roiIndex=None, samples=None,
-                      integrate=False, unwr=False, metaDetail=1, useSensitivity=False,
-                      spikeThr=None)
+                      integrate=False, unwr=False, metaDetail=2, useSensitivity=False,
+                      spikeThr=None, load_data=True)
     # meta = Calder_utils.load_meta(filename = filepath)
     
     # if channels == None:
@@ -219,6 +220,7 @@ def LPS_block(path_data,channels,verbose,config,start_sem,fileIDs):
     
     #data = np.full((n_rows,n_chans),np.nan,dtype=np.float32)
     #print(n_chans)
+
     with start_sem:
         data, list_meta, _ = load_files(path_data = path_data,
                                         channels = channels,
@@ -230,7 +232,7 @@ def LPS_block(path_data,channels,verbose,config,start_sem,fileIDs):
         gc.collect()
 
     end_downloads = time.perf_counter()
-
+    
     # #data =  np.concatenate(data, axis=0)
     # gc.collect()
     
@@ -589,13 +591,18 @@ def DASProcessParalelle(config_path=None):
     #find channels
     firstfile = os.path.join(config['DataInfo']['directory'] , fileIDs[0] + '.hdf5')
     channels = []
-    meta = Calder_utils.load_meta(firstfile)
+    
+    _, meta = load_DAS_file(firstfile,metaDetail=2, load_data=False)
     chans = meta['header']['channels']
     dshape = meta['header']['dimensionSizes']
-    #print(dshape)
-
     n_synth = config['ProcessingInfo']['n_synthetic']
     
+    c_start = config['ProcessingInfo']['c_start']
+    if len(c_start)>0:
+        c_start = int(c_start)
+    else:
+        c_start = 0
+
     c_end = config['ProcessingInfo']['c_end']
     if len(c_end)>0:
         c_end = int(c_end)-1
@@ -643,7 +650,7 @@ def DASProcessParalelle(config_path=None):
     n_workers = int(config['DataInfo']['n_workers'])
     verbose = config['ProcessingInfo'].getboolean('verbose')
     path_data = config['DataInfo']['directory'] 
-
+    
     #making the output directory
     tnow = datetime.datetime.now().strftime('%Y%m%dT%H%M%S')
     outputdir = os.path.join(config['SaveInfo']['directory'],config['SaveInfo']['run_name']+tnow)
@@ -783,6 +790,7 @@ def main():
         except Exception as e:
             #log and continue to next file
             print(f"Error Processing '{ini_file}':{e}")
+            traceback.print_exc()
 
     t_ex_end = time.perf_counter()
     print(f"\n=== Duration: {t_ex_end - t_ex_start:.2f}s ===")

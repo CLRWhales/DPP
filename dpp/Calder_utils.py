@@ -11,6 +11,8 @@ from scipy.stats import entropy
 import gc
 from numba import njit, prange
 
+from dpp.simpleDASreader4 import _fix_meta 
+
 def faststack(X,n, wind = 1):
      """ fast adjacent channel stack through time
     Parameters
@@ -110,31 +112,32 @@ def loadFTX(directory,nworkers = 1,start_f=None, stop_f=None, start_cidx=None, s
 
     return data, freqs,times,channels
 
-def load_meta(filename,metaDetail = 1):
-    """
-    Extracted from ASN load das file, see for details
-    """
-    with h5pydict.DictFile(filename,'r') as f:
-        # Load metedata (all file contents except data field)
-        m = f.load_dict(skipFields=['data']) 
-        if metaDetail==1:
-            ds=m['demodSpec']
-            mon=m['monitoring']
-            meta=dict(fileVersion = m['fileVersion'],
-                      header     = m['header'],
-                      timing     = m['timing'],
-                      cableSpec  = m['cableSpec'],
-                      monitoring = dict(Gps = mon['Gps'],
-                                        Laser=dict(itu=mon['Laser']['itu'])),
-                      demodSpec  = dict(roiStart = ds['roiStart'],
-                                        roiEnd   = ds['roiEnd'],
-                                        roiDec   = ds['roiDec'],
-                                        nDiffTau = ds['nDiffTau'],
-                                        nAvgTau  = ds['nAvgTau'],
-                                        dTau     = ds['dTau']))
-        else:
-            meta = m
-    return meta
+# def load_meta(filename,metaDetail = 1):
+#     """
+#     Extracted from ASN load das file, see for details
+#     """
+#     with h5pydict.DictFile(filename,'r') as f:
+#         # Load metedata (all file contents except data field)
+#         m = f.load_dict(skipFields=['data']) 
+#         if metaDetail==1:
+#             ds=m['demodSpec']
+#             mon=m['monitoring']
+#             meta=dict(fileVersion = m['fileVersion'],
+#                       header     = m['header'],
+#                       timing     = m['timing'],
+#                       cableSpec  = m['cableSpec'],
+#                       monitoring = dict(Gps = mon['Gps'],
+#                                         Laser=dict(itu=mon['Laser']['itu'])),
+#                       demodSpec  = dict(roiStart = ds['roiStart'],
+#                                         roiEnd   = ds['roiEnd'],
+#                                         roiDec   = ds['roiDec'],
+#                                         nDiffTau = ds['nDiffTau'],
+#                                         nAvgTau  = ds['nAvgTau'],
+#                                         dTau     = ds['dTau']))
+#         else:
+#             meta = m
+#         _fix_meta(meta)
+#     return meta
 
 def window_rms(a, windowsize):
     a2 = np.square(a)

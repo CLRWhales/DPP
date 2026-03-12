@@ -13,7 +13,6 @@ from sympy import symbols,sympify
 
 import dpp.h5pydict as h5pydict
 
-      
 def combine_units(units, operator='*'):
     """
     Combines units from a list of strings by chosen operator.
@@ -141,9 +140,10 @@ def _fix_meta(meta):
         meta dict returned from load_DAS_file().
     """
     if meta['fileVersion']<7:
+        #print(meta['fileVersion'])
         c=299792458 #speed of light in vacuum
         if not 'cableSpec' in meta.keys():
-            meta['cableSpec']={'fiberOverlength':1.0,
+            meta['cableSpec']={'fiberOverLength':1.0, #calder changed l to L to fix consistency crash
                                'refractiveIndex':1.4677,
                                'zeta':0.78}
         dx_fiber = meta['demodSpec']['dTau']*c\
@@ -168,12 +168,15 @@ def _fix_meta(meta):
         meta['header']['sensitivityUnit']='rad/m/ε'
         channels=_absolute_channels(meta)
         meta['header']['channels']=channels
-        
-            
+
+        if not 'dimensionSizes' in meta['header'].keys():
+            meta['header']['dimensionSizes'] = [meta['acqSpec']['nSamples'], meta['acqSpec']['nChannels']] #added by calder to solve missing flag issue     
             
         meta['cableSpec']['sensorDistances']=channels*meta['header']['dx']
         
-        itu=int(meta['monitoring']['Laser']['itu'])
+        #itu=int(meta['monitoring']['Laser']['itu']) #removed by calder to fix missing field error
+        laser_section = meta['monitoring'].get('Laser') or meta['monitoring'].get('laser')#added by calder to fix missing field error
+        itu = int(laser_section['itu'])#added by calder to fix missing field error
         wavelength=c/(190e12+itu*1e11)
         
         meta['header']['sensitivity']=4*np.pi*meta['cableSpec']['zeta']\
@@ -185,7 +188,7 @@ def _fix_meta(meta):
 
 def load_DAS_file(filename, chIndex=None, roiIndex=None, samples=None,
                   integrate=True, unwr=True, metaDetail=1, useSensitivity=True,
-                  spikeThr=None):
+                  spikeThr=None, load_data = True):
     """
     Load demodulated signal and metadata. 
     
@@ -266,7 +269,7 @@ def load_DAS_file(filename, chIndex=None, roiIndex=None, samples=None,
             meta = m
             
         _fix_meta(meta)
-                
+             
         # Express samples as a range
         if isinstance(samples, int):
             samples=range(0, samples)
@@ -282,185 +285,194 @@ def load_DAS_file(filename, chIndex=None, roiIndex=None, samples=None,
         elif chIndex is None:
             chIndex = slice(None)
         
-        signal = f['data'][:,chIndex][samples,:]\
-            * np.float32(meta['header']['dataScale'])  
-                
-    if unwr or spikeThr or integrate:
-        if meta['header']['dataType']<3 or meta['demodSpec']['nDiffTau']==0:
-            raise ValueError('Options unwr, spikeThr or integrate can only be\
-                             used with time differentiated phase data')
-    if unwr and meta['header']['spatialUnwrRange']:
-        signal=unwrap(signal,meta['header']['spatialUnwrRange'],axis=1) 
-    
-    if spikeThr is not None:
-        signal[np.abs(signal)>spikeThr] = 0
-    
-    unit=meta['header']['unit'] 
-    if integrate:
-        np.cumsum(signal,axis=0,out = signal)
-        signal*=meta['header']['dt']
-        unit=combine_units([unit, unit.split('/')[-1]]) 
-       
-    if useSensitivity:
-        #print("DEBUG: ", meta["header"].keys())
-        if 'sensitivity' in meta["header"].keys(): 
-            signal/=meta['header']['sensitivity']
-            sensitivity_unit=meta['header']['sensitivityUnit']
-        elif 'sensitivities' in meta["header"].keys(): 
-            signal/=meta['header']['sensitivities'].item()
-            sensitivity_unit=meta['header']['sensitivityUnits'].item()
-        else: 
-            raise KeyError("!! no sensitivity keys in meta dict")
-            
-        unit=combine_units([unit, sensitivity_unit],'/')
+        if load_data:
+            signal = f['data'][:,chIndex][samples,:]\
+                * np.float32(meta['header']['dataScale'])
+            process = True  
+        else:
+            signal = np.nan
+            process = False
 
-    meta.update(appended = dict(
-                dataOffs=meta['header']['phiOffs'][chIndex],
-                unit = unit,
-                channels = meta['header']['channels'][chIndex]
-                ))
+    if process:
+        if unwr or spikeThr or integrate:
+            if meta['header']['dataType']<3 or meta['demodSpec']['nDiffTau']==0:
+                raise ValueError('Options unwr, spikeThr or integrate can only be\
+                                used with time differentiated phase data')
+        if unwr and meta['header']['spatialUnwrRange']:
+            signal=unwrap(signal,meta['header']['spatialUnwrRange'],axis=1) 
+        
+        if spikeThr is not None:
+            signal[np.abs(signal)>spikeThr] = 0
+        
+        unit=meta['header']['unit'] 
+        if integrate:
+            np.cumsum(signal,axis=0,out = signal)
+            signal*=meta['header']['dt']
+            unit=combine_units([unit, unit.split('/')[-1]]) 
+        
+        if useSensitivity:
+            #print("DEBUG: ", meta["header"].keys())
+            if 'sensitivity' in meta["header"].keys(): 
+                signal/=meta['header']['sensitivity']
+                sensitivity_unit=meta['header']['sensitivityUnit']
+            elif 'sensitivities' in meta["header"].keys(): 
+                signal/=meta['header']['sensitivities'].item()
+                sensitivity_unit=meta['header']['sensitivityUnits'].item()
+            else: 
+                raise KeyError("!! no sensitivity keys in meta dict")
+                
+            unit=combine_units([unit, sensitivity_unit],'/')
+
+        phiOffs = meta['header'].get('phiOffs', np.zeros_like(meta['header']['channels'])) #added by calder to handle missing field error
+        dataOffs = phiOffs#[chIndex]#added by calder to handle missing field error 
+        
+        meta.update(appended = dict(
+                    dataOffs=dataOffs,
+                    unit = unit,
+                    channels = meta['header']['channels'][chIndex]
+                    ))
     
     return signal, meta
     
-def load_multiple_DAS_files(path, fileIds, chIndex=None, roiIndex=None,
-                            integrate=True, unwr=True, metaDetail=1,
-                            useSensitivity=True, spikeThr=None):       
-    """cumsum
-    Load and concatenate multiple DAS files. Files shoud be from a contigous
-    recording.
+# def load_multiple_DAS_files(path, fileIds, chIndex=None, roiIndex=None,
+#                             integrate=True, unwr=True, metaDetail=1,
+#                             useSensitivity=True, spikeThr=None):       
+#     """cumsum
+#     Load and concatenate multiple DAS files. Files shoud be from a contigous
+#     recording.
     
-    Inputs
-    ======
-    path: string
-        Path to folder containing DAS files to load.
-    fileIds: list of int
-        Integer filenames (without '.hdf5' extension) of data to load.
-    chIndex: list, range or None
-        Channel indices to load.
-        Ingored if roiIndex is not None.
-        None => load all available channels (default). 
-    roiIndex: list, range or None
-        Returns all channels of a region of interest (ROI) with indices in
-        roiIndex.
-        If None, chIndex is used to select channels (default).
-    integrate: bool
-        Integrate along time axis of phase data (default).
-        If false, the output will be the time differential of the phase.       
-    unwr: boolean
-        Unwrap along spatial axis before cumsum. 
-        Defaults to True. Use False for hydrophones or Bragg grating arrays.  
-    metaDetail: int
-        1 => Load only metadata needed for DAS data interpretation
-        2 => Load all metadata
-    useSensitivity: boolcumsum
-        Scale (divide) signal with meta['header']['sensitivity']. 
-    spikeThr: float or None
-        Threshold (in readians) for spike detection and removal. 
-        Samples that exceed this threshold in absolute value before cumsum 
-        (or at output if cumsum is disabled) will be set to zero.  
-        As default spikeThr=None, and there is no spike detection.
+#     Inputs
+#     ======
+#     path: string
+#         Path to folder containing DAS files to load.
+#     fileIds: list of int
+#         Integer filenames (without '.hdf5' extension) of data to load.
+#     chIndex: list, range or None
+#         Channel indices to load.
+#         Ingored if roiIndex is not None.
+#         None => load all available channels (default). 
+#     roiIndex: list, range or None
+#         Returns all channels of a region of interest (ROI) with indices in
+#         roiIndex.
+#         If None, chIndex is used to select channels (default).
+#     integrate: bool
+#         Integrate along time axis of phase data (default).
+#         If false, the output will be the time differential of the phase.       
+#     unwr: boolean
+#         Unwrap along spatial axis before cumsum. 
+#         Defaults to True. Use False for hydrophones or Bragg grating arrays.  
+#     metaDetail: int
+#         1 => Load only metadata needed for DAS data interpretation
+#         2 => Load all metadata
+#     useSensitivity: boolcumsum
+#         Scale (divide) signal with meta['header']['sensitivity']. 
+#     spikeThr: float or None
+#         Threshold (in readians) for spike detection and removal. 
+#         Samples that exceed this threshold in absolute value before cumsum 
+#         (or at output if cumsum is disabled) will be set to zero.  
+#         As default spikeThr=None, and there is no spike detection.
         
-    Returns
-    -------
-    concatSig: array(Nt,Nch) of float
-        Recorded signal data with time index in first dimension and channel 
-        index in the second. 
-    meta: dict
-        Dictionary with selected metadata. 
-        Note: meta['header']['phiOffs'] will be reduced to the requested
-        channels. 
-        Metadata fields relevant for end users are described in
-        'OPT-TN1287 OptoDAS HDF5 file format description forcumsum externals.pdf'
-        The meta['appended'] includes fields appended by this function:
-            dataOffs: array(Nch) of float
-                The header['phiOffs'] of the extracted channels, scaled 
-                with same factor as data.
-            unit: str
-                The unit of the output data. If useSensitivity=True, 
-                unit = strain else unit = rad.
-            channels: array(Nch) of int
-                The absolute channel numbers of the extracted data channels.
-    """
-    print('Loading files: ', end='')
-    for fileId in fileIds:
-        filename=os.path.join(path, str(fileId).zfill(6)+'.hdf5')
-        signal, m = load_DAS_file(filename,
-                                  chIndex=chIndex,
-                                  roiIndex = roiIndex,
-                                  samples=None,
-                                  integrate=False,
-                                  unwr=False,
-                                  spikeThr=None,
-                                  metaDetail=1,
-                                  useSensitivity=useSensitivity)
-        if fileId == fileIds[0]:
-            meta=m
-            unit=meta['appended']['unit']
-            concatSig=signal
-        else:
-            concatSig=np.concatenate((concatSig,signal),axis=0)
-        print('%d, '%fileId, end='')
-    print('Completed.')
+#     Returns
+#     -------
+#     concatSig: array(Nt,Nch) of float
+#         Recorded signal data with time index in first dimension and channel 
+#         index in the second. 
+#     meta: dict
+#         Dictionary with selected metadata. 
+#         Note: meta['header']['phiOffs'] will be reduced to the requested
+#         channels. 
+#         Metadata fields relevant for end users are described in
+#         'OPT-TN1287 OptoDAS HDF5 file format description forcumsum externals.pdf'
+#         The meta['appended'] includes fields appended by this function:
+#             dataOffs: array(Nch) of float
+#                 The header['phiOffs'] of the extracted channels, scaled 
+#                 with same factor as data.
+#             unit: str
+#                 The unit of the output data. If useSensitivity=True, 
+#                 unit = strain else unit = rad.
+#             channels: array(Nch) of int
+#                 The absolute channel numbers of the extracted data channels.
+#     """
+#     print('Loading files: ', end='')
+#     for fileId in fileIds:
+#         filename=os.path.join(path, str(fileId).zfill(6)+'.hdf5')
+#         signal, m = load_DAS_file(filename,
+#                                   chIndex=chIndex,
+#                                   roiIndex = roiIndex,
+#                                   samples=None,
+#                                   integrate=False,
+#                                   unwr=False,
+#                                   spikeThr=None,
+#                                   metaDetail=1,
+#                                   useSensitivity=useSensitivity)
+#         if fileId == fileIds[0]:
+#             meta=m
+#             unit=meta['appended']['unit']
+#             concatSig=signal
+#         else:
+#             concatSig=np.concatenate((concatSig,signal),axis=0)
+#         print('%d, '%fileId, end='')
+#     print('Completed.')
 
-    if unwr or spikeThr or integrate:
-        if meta['header']['dataType']<3 or meta['demodSpec']['nDiffTau']==0:
-            raise ValueError('Options unwr, spikeThr or integrate can only be\
-                             used with time differentiated phase data')
-    if unwr and meta['header']['spatialUnwrRange']:
-        concatSig=unwrap(concatSig,meta['header']['spatialUnwrRange'],axis=1)
-    if spikeThr is not None:
-        concatSig[np.abs(concatSig)>spikeThr] = 0
-    if integrate:
-        concatSig=np.cumsum(concatSig,axis=0)*meta['header']['dt']
-        unit=combine_units([unit, unit.split('/')[-1]]) 
-    meta['appended']['unit']=unit
+#     if unwr or spikeThr or integrate:
+#         if meta['header']['dataType']<3 or meta['demodSpec']['nDiffTau']==0:
+#             raise ValueError('Options unwr, spikeThr or integrate can only be\
+#                              used with time differentiated phase data')
+#     if unwr and meta['header']['spatialUnwrRange']:
+#         concatSig=unwrap(concatSig,meta['header']['spatialUnwrRange'],axis=1)
+#     if spikeThr is not None:
+#         concatSig[np.abs(concatSig)>spikeThr] = 0
+#     if integrate:
+#         concatSig=np.cumsum(concatSig,axis=0)*meta['header']['dt']
+#         unit=combine_units([unit, unit.split('/')[-1]]) 
+#     meta['appended']['unit']=unit
     
-    return concatSig, meta
+#     return concatSig, meta
 
-if __name__=='__main__':
-    """
-    A description of the OptoDAS HDF5 file format is available in:
-    'OPT-TN1287-R03 OptoDAS HDF5 file format description for externals.pdf'
-    """
-    import pylab as plt
+# if __name__=='__main__':
+#     """
+#     A description of the OptoDAS HDF5 file format is available in:
+#     'OPT-TN1287-R03 OptoDAS HDF5 file format description for externals.pdf'
+#     """
+#     import pylab as plt
     
-    filename='<path + filename of raw DAS data file>'
-    filename='/raid1/fsi/exps/ver7_testing/20210303/dphi/130344.hdf5'
+#     filename='<path + filename of raw DAS data file>'
+#     filename='/raid1/fsi/exps/ver7_testing/20210303/dphi/130344.hdf5'
     
-    # load data in unit ε
-    # to load data in rad/m set useSensitivty=False
-    # to load data in rad set useSensitivty=False, and mutiply with gaugelength:
-    # signal *= meta['header']['gaugeLength']
-    # meta['appended']['unit'] = combine_units({meta['appended']['unit'],'m','*')
-    signal, meta = load_DAS_file(filename,
-                                 chIndex=range(20,150,10),
-                                 #roiIndex=0,
-                                 integrate=True,
-                                 samples=None,
-                                 useSensitivity=True,
-                                 unwr=True
-                                 )
+#     # load data in unit ε
+#     # to load data in rad/m set useSensitivty=False
+#     # to load data in rad set useSensitivty=False, and mutiply with gaugelength:
+#     # signal *= meta['header']['gaugeLength']
+#     # meta['appended']['unit'] = combine_units({meta['appended']['unit'],'m','*')
+#     signal, meta = load_DAS_file(filename,
+#                                  chIndex=range(20,150,10),
+#                                  #roiIndex=0,
+#                                  integrate=True,
+#                                  samples=None,
+#                                  useSensitivity=True,
+#                                  unwr=True
+#                                  )
     
     
-    # Get positions in meters
-    positions=meta['appended']['channels']*meta['header']['dx']
+#     # Get positions in meters
+#     positions=meta['appended']['channels']*meta['header']['dx']
             
-    # Get time axis
-    time=np.arange(signal.shape[0])*meta['header']['dt']
+#     # Get time axis
+#     time=np.arange(signal.shape[0])*meta['header']['dt']
     
-    # Plot time-series of selected channels
-    plt.figure('time-series')
+#     # Plot time-series of selected channels
+#     plt.figure('time-series')
     
-    absChs=[100, 240]
+#     absChs=[100, 240]
     
-    for absCh in absChs:
-        index=np.argmax(positions>=absCh)
-        plt.plot(time,
-                 signal[:,index],
-                 label='%.1f m'%positions[index])
-        plt.title(format_time(meta['header']['time']))
-        plt.ylabel(meta['appended']['unit'])
-        plt.xlabel('Time (s)')
-        plt.legend()
-        plt.show()
+#     for absCh in absChs:
+#         index=np.argmax(positions>=absCh)
+#         plt.plot(time,
+#                  signal[:,index],
+#                  label='%.1f m'%positions[index])
+#         plt.title(format_time(meta['header']['time']))
+#         plt.ylabel(meta['appended']['unit'])
+#         plt.xlabel('Time (s)')
+#         plt.legend()
+#         plt.show()
     
