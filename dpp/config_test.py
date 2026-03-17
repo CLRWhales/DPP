@@ -49,7 +49,7 @@ config['FKInfo'] = {'nfft_time':'512', #parameters in units of samples for the f
                     'fmin':'0', #do you want to freq filter your saved FKS? set to -1 for no min frequency 
                     'fmax':'80', #do you want to freq filter your saved FKS? set to -1 for no max frequency 
                     'thresh': '5',
-                    'sample_method':'none', #do you want to sample other non signals? none for no, same for a random selection of the same number, in files with no water band, randomly pull n images for more diverse training material
+                    'sample_method':'none', #do you want to sample other non signals? none for no, same: for a random selection of the same number and n without anything, random: in files with no water band, randomly pull n images for more diverse training material and pull up to that number if true is less than n, fixed: pull n non signals
                     'n':'50'
                     }
 

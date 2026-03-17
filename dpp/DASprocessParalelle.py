@@ -531,6 +531,11 @@ def LPS_block(path_data,channels,verbose,config,start_sem,fileIDs):
                     out_range_idx = [i for i, flag in enumerate(flags) if not flag]
                     true_n = len(in_range_idx)
 
+                    if true_n == 0:
+                        true_n = nfks
+                    elif true_n > len(out_range_idx):
+                        true_n = len(out_range_idx) 
+
                     for i in in_range_idx:
                         fk = fks[i]
                         fname = 'FS'+str(fs_target)+'_T'+ str(fk[1][0]) + '_X' + str(fk[1][1]) + '_F' + str(fk[2][0]) + '_K' +str(fk[2][1]) +'_V'+ str(fk[3])+ '_L'+str(fk[4]) + '_R' + str(fk[2][2]) + '_' + fdate + 'Z.png'
@@ -540,11 +545,29 @@ def LPS_block(path_data,channels,verbose,config,start_sem,fileIDs):
                     if true_n >0:
                         sampled_idx = random.sample(out_range_idx, min(true_n, len(out_range_idx)))
                         for i in sampled_idx:
-                            fk = fks[sampled_idx]
+                            fk = fks[i]
                             fname = 'FS'+str(fs_target)+'_T'+ str(fk[1][0]) + '_X' + str(fk[1][1]) + '_F' + str(fk[2][0]) + '_K' +str(fk[2][1]) +'_V'+ str(fk[3])+ '_L'+str(fk[4]) + '_R' + str(fk[2][2]) + '_' + fdate + 'Z.png'
                             data_name = os.path.join(FKDir,fname)
                             imageio.imwrite(data_name,fk[0])
 
+                case 'fixed':
+                    in_range_idx = [i for i, flag in enumerate(flags) if flag]
+                    out_range_idx = [i for i, flag in enumerate(flags) if not flag]
+                    true_n = nfks
+
+                    for i in in_range_idx:
+                        fk = fks[i]
+                        fname = 'FS'+str(fs_target)+'_T'+ str(fk[1][0]) + '_X' + str(fk[1][1]) + '_F' + str(fk[2][0]) + '_K' +str(fk[2][1]) +'_V'+ str(fk[3])+ '_L'+str(fk[4]) + '_R' + str(fk[2][2]) + '_' + fdate + 'Z.png'
+                        data_name = os.path.join(FKDir,fname)
+                        imageio.imwrite(data_name,fk[0])
+                    
+                    if true_n >0:
+                        sampled_idx = random.sample(out_range_idx, min(true_n, len(out_range_idx)))
+                        for i in sampled_idx:
+                            fk = fks[i]
+                            fname = 'FS'+str(fs_target)+'_T'+ str(fk[1][0]) + '_X' + str(fk[1][1]) + '_F' + str(fk[2][0]) + '_K' +str(fk[2][1]) +'_V'+ str(fk[3])+ '_L'+str(fk[4]) + '_R' + str(fk[2][2]) + '_' + fdate + 'Z.png'
+                            data_name = os.path.join(FKDir,fname)
+                            imageio.imwrite(data_name,fk[0])
 
             del fks
 
@@ -699,7 +722,7 @@ def DASProcessParalelle(config_path=None):
 
 
         load_T_ratio = np.ceil(total/download_dur)
-        print(load_T_ratio)
+        #print(load_T_ratio)
         nparalelle = 1
         #process_T_ratio = total/processing_dur
 
@@ -723,24 +746,24 @@ def DASProcessParalelle(config_path=None):
             if load_max > process_max:
                 diff = load_max - process_max 
                 m_ratio = np.floor((available_ram-diff)/process_max)
-                print(m_ratio,load_T_ratio)
+                #print(m_ratio,load_T_ratio)
                 test = min(np.floor(m_ratio/load_T_ratio),4)
-                print(test)
+                #print(test)
                 worstcase = test*load_max + ((m_ratio-test)*process_max)
-                print(worstcase)
+                #print(worstcase)
                 while (worstcase > available_ram):
                     if test == 1:
                         break
                     test = test-1
                     worstcase = test*load_max + ((m_ratio-test)*process_max)
                 nparalelle = int(test)
-                print(m_ratio)
-                print(nparalelle)
+                #print(m_ratio)
+                #print(nparalelle)
                 print('RAM load limited')
 
             if process_max > load_max:
                 m_ratio = np.floor((available_ram)/process_max)
-                print(m_ratio)
+                #print(m_ratio)
                 nparalelle = int(np.floor(m_ratio/load_T_ratio))
                 print('RAM process limited')
 
