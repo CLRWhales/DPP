@@ -11,7 +11,6 @@ from scipy.stats import entropy
 import gc
 from numba import njit, prange
 
-from dpp.simpleDASreader4 import _fix_meta 
 
 def faststack(X,n, wind = 1):
      """ fast adjacent channel stack through time

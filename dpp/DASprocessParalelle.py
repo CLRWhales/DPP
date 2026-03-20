@@ -173,18 +173,25 @@ def preprocess_DAS(data, list_meta, unwr=False, integrate=True, useSensitivity=T
         #print(f"DEBUG: unit={unit}")
 
     if useSensitivity:
-        if 'sensitivity' in meta["header"].keys():
-            data/=meta['header']['sensitivity']
+        if 'sensitivity' in meta["header"].keys(): #added by calder to fix metadata issue. 
+            sense = meta['header']['sensitivity']
             sensitivity_unit=meta['header']['sensitivityUnit']
         elif 'sensitivities' in meta["header"].keys(): 
-            data/=meta['header']['sensitivities'].item()
+            sense = meta['header']['sensitivities'].item()
             sensitivity_unit=meta['header']['sensitivityUnits'].item()
         else: 
             raise KeyError("!! no sensitivity keys in meta dict")
+
+        if sense == 1.0:
+            c = 299792458
+            laser_section = meta['monitoring'].get('Laser') or meta['monitoring'].get('laser')#added by calder to fix missing field error
+            itu = int(laser_section['itu'])#added by calder to fix missing field error
+            wavelength=c/(190e12+itu*1e11)
+            sense = 4*np.pi*meta['cableSpec']['zeta']*meta['cableSpec']['refractiveIndex']/wavelength
+
+        data/=sense  
         unit=combine_units([unit, sensitivity_unit],'/')
-        #print(f"DEBUG: sensitivity_unit={sensitivity_unit}, unit={unit}")
-    meta['appended']['unit']=unit
-   
+
     #update all metas
     for metax in list_meta: 
         metax['appended']['unit']=unit
@@ -773,7 +780,7 @@ def DASProcessParalelle(config_path=None):
     n_workers = int(n_workers)
     n_sem = int(n_sem)
     print('using ' + str(n_workers)+ ' workers')
-    print('usind ' + str(n_sem) + ' semaphores')
+    print('using ' + str(n_sem) + ' semaphores')
 
     start_sem = manager.Semaphore(n_sem)
     
