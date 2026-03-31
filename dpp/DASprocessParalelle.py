@@ -576,6 +576,31 @@ def LPS_block(path_data,channels,verbose,config,start_sem,fileIDs):
                             data_name = os.path.join(FKDir,fname)
                             imageio.imwrite(data_name,fk[0])
 
+                case 'min_s':
+                    in_range_idx = [i for i, flag in enumerate(flags) if flag]
+                    out_range_idx = [i for i, flag in enumerate(flags) if not flag]
+                    true_n = len(in_range_idx)
+
+                    if true_n == 0:
+                        true_n = nfks
+                    elif true_n > len(out_range_idx):
+                        true_n = len(out_range_idx) 
+                        
+                    for i in in_range_idx:
+                        fk = fks[i]
+                        fname = 'FS'+str(fs_target)+'_T'+ str(fk[1][0]) + '_X' + str(fk[1][1]) + '_F' + str(fk[2][0]) + '_K' +str(fk[2][1]) +'_V'+ str(fk[3])+ '_L'+str(fk[4]) + '_R' + str(fk[2][2]) + '_' + fdate + 'Z.png'
+                        data_name = os.path.join(FKDir,fname)
+                        imageio.imwrite(data_name,fk[0])
+                    
+                    if true_n >0:
+                        sampled_idx = sorted(range(len(fks)), key=lambda i: fks[i][2][2])[:true_n]
+                        for i in sampled_idx:
+                            fk = fks[i]
+                            fname = 'FS'+str(fs_target)+'_T'+ str(fk[1][0]) + '_X' + str(fk[1][1]) + '_F' + str(fk[2][0]) + '_K' +str(fk[2][1]) +'_V'+ str(fk[3])+ '_L'+str(fk[4]) + '_R' + str(fk[2][2]) + '_' + fdate + 'Z.png'
+                            data_name = os.path.join(FKDir,fname)
+                            imageio.imwrite(data_name,fk[0])
+                    
+
             del fks
 
         case _:
@@ -820,7 +845,7 @@ def main():
         except Exception as e:
             #log and continue to next file
             print(f"Error Processing '{ini_file}':{e}")
-            traceback.print_exc()
+            #traceback.print_exc()
 
     t_ex_end = time.perf_counter()
     print(f"\n=== Duration: {t_ex_end - t_ex_start:.2f}s ===")
