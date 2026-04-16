@@ -329,23 +329,25 @@ def sliding_window_FK(arr, window_shape, dx, dt,fcut,overlap = 2,rescale = False
         for i in range(shape[0]): #time
             win = windows[i, j]*weight
             fft_result = np.fft.fftshift(np.abs((np.fft.rfft2(win,axes=(-1,-2),norm = 'forward'))),axes=1)[1:,:]#this removes time DC offset
+            fft_result = 20*np.log10(fft_result +1e-8)
             pos.append((i * step_y, j * step_x))
             #map = map+fft_result
             intermediate.append(fft_result)
             #N = N+1
 
-        intermediate = 20*np.log10(intermediate)
+        #intermediate = 20*np.log10(intermediate)
         mean_img = np.mean(intermediate, axis = 0)
         #mean_img = map/N
         stdev = np.std(intermediate, axis = 0)
 
         for f in intermediate:
             tmp= NDI.gaussian_filter((f-mean_img)/stdev,sigma=(2))
+            #tmp = NDI.gaussian_filter((f-mean_img),sigma=(2))
             stmp = np.std(tmp)
             mtmp = np.mean(tmp)
             tmp[:tfreq,:] = np.mean(tmp)
             peak_lock = np.unravel_index(np.argmax(tmp), tmp.shape)
-            max_ratio = np.round((np.max(tmp)-mtmp)/stmp,3)
+            max_ratio = np.round((np.max(tmp-mtmp)/stmp),3)
             fmax=peak_lock[0]
             kmax = np.round(np.abs(peak_lock[1]-window_shape[1]/2))
             L = int((peak_lock[1]-window_shape[1]/2)<0)
@@ -356,11 +358,13 @@ def sliding_window_FK(arr, window_shape, dx, dt,fcut,overlap = 2,rescale = False
         
         #mintermediate = np.mean(intermediate)
         # stdintermediate = np.std(intermediate)
-        results.extend((intermediate-mean_img)/stdev)
+        #results.extend((intermediate-mean_img)/stdev)
+        results.extend((intermediate-mean_img))
+ 
     del windows
     gc.collect()
     if rescale:
-        low,high = approximate_percentiles(results,[75,99])
+        low,high = approximate_percentiles(results,[1,99])
         #vals = np.stack(results,axis=0)[:,128:,:]
         #vals[vals<0] = 0
         #print(vals.shape)
@@ -368,7 +372,10 @@ def sliding_window_FK(arr, window_shape, dx, dt,fcut,overlap = 2,rescale = False
         #high = np.ceil(np.percentile(vals,99)) #filewise
         low = np.floor(low)
         high = np.ceil(high)
-        #print(low)
+        low = -35
+        high = 35
+        # print(low,high)
+        # print(np.min(results),np.max(results))
         #del vals
         results = [(255*((r-low)/(high-low))).clip(0, 255).astype(np.uint8) for r in results]
 

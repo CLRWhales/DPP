@@ -492,6 +492,7 @@ def LPS_block(path_data,channels,verbose,config,start_sem,fileIDs):
 
 
             thresh = config['FKInfo'].getfloat('thresh')
+            #print([fk[2][2] for fk in fks])
             flags = [(vmin <= fk[3] <= vmax) and (fk[2][2] >= thresh) and (fmin <=freqs[fk[2][0]] <=fmax) for fk in fks]
             nfks = config['FKInfo'].getint('n')
             
@@ -845,7 +846,7 @@ def main():
         except Exception as e:
             #log and continue to next file
             print(f"Error Processing '{ini_file}':{e}")
-            #traceback.print_exc()
+            traceback.print_exc()
 
     t_ex_end = time.perf_counter()
     print(f"\n=== Duration: {t_ex_end - t_ex_start:.2f}s ===")
