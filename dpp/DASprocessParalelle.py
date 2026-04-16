@@ -846,7 +846,7 @@ def main():
         except Exception as e:
             #log and continue to next file
             print(f"Error Processing '{ini_file}':{e}")
-            traceback.print_exc()
+            #traceback.print_exc()
 
     t_ex_end = time.perf_counter()
     print(f"\n=== Duration: {t_ex_end - t_ex_start:.2f}s ===")
