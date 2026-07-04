@@ -769,7 +769,7 @@ def DASProcessParalelle(config_path=None):
             #pulling over network so limit threads to reduce overhead
             totalthreads = 12
             nthreads = n_files
-            n_paralelle = int(min(np.floor(totalthreads/nthreads),1))
+            n_paralelle = int(max(np.floor(totalthreads/nthreads),1))
             m_ratio = np.floor(available_ram/max(load_max,process_max))
             n_sem = n_paralelle + 1
             n_workers = int(min(m_ratio,n_workers,ncores))
@@ -846,7 +846,7 @@ def main():
         except Exception as e:
             #log and continue to next file
             print(f"Error Processing '{ini_file}':{e}")
-            #traceback.print_exc()
+            traceback.print_exc()
 
     t_ex_end = time.perf_counter()
     print(f"\n=== Duration: {t_ex_end - t_ex_start:.2f}s ===")

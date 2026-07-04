@@ -359,19 +359,19 @@ def sliding_window_FK(arr, window_shape, dx, dt,fcut,overlap = 2,rescale = False
         #mintermediate = np.mean(intermediate)
         # stdintermediate = np.std(intermediate)
         #results.extend((intermediate-mean_img)/stdev)
-        results.extend((intermediate-mean_img))
+        results.extend((intermediate-1*(mean_img)))
  
     del windows
     gc.collect()
     if rescale:
-        low,high = approximate_percentiles(results,[1,99])
+        #low,high = approximate_percentiles(results,[1,99])
         #vals = np.stack(results,axis=0)[:,128:,:]
         #vals[vals<0] = 0
         #print(vals.shape)
         #low,high = np.percentile(results,[75,99]) #file wise
         #high = np.ceil(np.percentile(vals,99)) #filewise
-        low = np.floor(low)
-        high = np.ceil(high)
+        # low = np.floor(low)
+        # high = np.ceil(high)
         low = -35
         high = 35
         # print(low,high)
