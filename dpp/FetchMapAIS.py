@@ -54,7 +54,8 @@ def get_ais(bbox,start,end,minspeed,token):
     response = requests.request("POST", aisURL, data=payload,  headers=headersList).json()
     flag = response['success']
     rows = response['data']
-    columns = ["mmsi", "datettimeUTC", "lon", "lat","CoG", "SoG", "MsgN", "S_kph", "Sec2prev", "Dist2prev", "TrueHeading","rate_of_turn"]
+    columns = ["mmsi", "datetimeUTC", "lon", "lat", "CoG", "SoG", "MsgN", "S_kph", "Sec2prev", "Dist2prev", "TrueHeading","rate_of_turn"]
+
     df = pd.DataFrame(rows, columns=columns)
     
     return flag, df
@@ -75,9 +76,28 @@ def get_nameMMSI(mmsi, start,end,token):
     response = requests.request("POST", mmsiURL, data=payload,  headers=headersList).json()
     flag = response['success']
     rows = response['data']
-    columns = ["mmsi", "imo_num", "name", "callsign","gt", "length", "draught", "depth", "shiptypelevel", "statcode", "type"]
     df = pd.DataFrame(rows)
-    return flag,df
+    df = df.rename(columns={
+        "mmsino": "mmsi",
+        "imono": "imo_num",
+        "shipname": "name",
+        "grosstonnage": "gt",
+        "shiptypegroupnor": "type",
+        "breadth": "depth"
+    })
+
+    if 'name' not in df.columns:
+        df['name'] = df['mmsi']
+    else:
+        df['name'] = df['name'].fillna('') 
+        df['name'] = df.apply(
+            lambda row: f"Unknown {row['mmsi']}" if row['name'] == '' or pd.isna(row['name']) else row['name'],
+            axis=1
+        )
+
+    df['name'] = df['name'].astype(str)
+
+    return flag, df
 
 def cable2linestring(path,zone,southern = False, sp = None,buffer_size = 10000):
 
