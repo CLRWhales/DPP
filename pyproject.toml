@@ -35,6 +35,7 @@ dependencies = [
 DASprocessParalelle = "dpp.DASprocessParalelle:main"
 DAScleaner = "dpp.DAScleaner:main"
 ExampleInI = "dpp.config_test:main"
+SimpleViewer = "dpp.SimpleViewer:main"
 
 [project.urls]
 Homepage = "https://github.com/CLRWhales/DPP"
